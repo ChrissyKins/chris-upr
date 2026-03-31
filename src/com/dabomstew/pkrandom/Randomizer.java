@@ -25,6 +25,8 @@ package com.dabomstew.pkrandom;
 /*--  along with this program. If not, see <http://www.gnu.org/licenses/>.  --*/
 /*----------------------------------------------------------------------------*/
 
+import java.io.File;
+import java.io.IOException;
 import java.io.OutputStream;
 import java.io.PrintStream;
 import java.util.*;
@@ -428,12 +430,50 @@ public class Randomizer {
 
         }
 
+        // Parse custom encounter/trainer file early so we can use it for both sections
+        String customEncounterPath = settings.getCustomEncounterFilePath();
+        CustomEncounterFile.ParseResult customParseResult = null;
+        if (customEncounterPath != null && !customEncounterPath.isEmpty()) {
+            try {
+                boolean useTimeOfDay = settings.isUseTimeBasedEncounters();
+                File customFile = new File(customEncounterPath);
+                customParseResult = CustomEncounterFile.parseFile(customFile, romHandler, useTimeOfDay);
+
+                if (customParseResult.hasErrors()) {
+                    log.println("Custom File Errors:");
+                    for (String error : customParseResult.errors) {
+                        log.println("  " + error);
+                    }
+                }
+                if (customParseResult.hasWarnings()) {
+                    log.println("Custom File Warnings:");
+                    for (String warning : customParseResult.warnings) {
+                        log.println("  " + warning);
+                    }
+                }
+            } catch (IOException e) {
+                log.println("Error reading custom file: " + e.getMessage());
+                log.println("Falling back to normal settings.");
+                customEncounterPath = null;
+                customParseResult = null;
+            }
+        }
+
         // Trainer Pokemon
         // 1. Add extra Trainer Pokemon
         // 2. Set trainers to be double battles and add extra Pokemon if necessary
         // 3. Randomize Trainer Pokemon
         // 4. Modify rivals to carry starters
         // 5. Force Trainer Pokemon to be fully evolved
+
+        // Apply custom trainers from file (overrides normal trainer randomization)
+        if (customParseResult != null && customParseResult.customTrainers != null) {
+            CustomEncounterFile.fillRandomTrainerSlots(customParseResult.customTrainers, romHandler, new Random(seed));
+            romHandler.setTrainers(customParseResult.customTrainers, false);
+            trainersChanged = true;
+            log.println("Custom Trainers applied from file.");
+            log.println();
+        }
 
         if (settings.getAdditionalRegularTrainerPokemon() > 0
                 || settings.getAdditionalImportantTrainerPokemon() > 0
@@ -572,25 +612,78 @@ public class Randomizer {
             romHandler.changeCatchRates(settings);
         }
 
-        switch (settings.getWildPokemonMod()) {
-            case RANDOM:
-                romHandler.randomEncounters(settings);
-                wildsChanged = true;
-                break;
-            case AREA_MAPPING:
-                romHandler.area1to1Encounters(settings);
-                wildsChanged = true;
-                break;
-            case GLOBAL_MAPPING:
-                romHandler.game1to1Encounters(settings);
-                wildsChanged = true;
-                break;
-            default:
-                if (settings.isWildLevelsModified()) {
-                    romHandler.onlyChangeWildLevels(settings);
-                    wildsChanged = true;
+        // Apply custom encounters from the already-parsed file
+        if (customParseResult != null) {
+            boolean useTimeOfDay = settings.isUseTimeBasedEncounters();
+
+            // Fill in any RANDOM encounter slots
+            CustomEncounterFile.fillRandomSlots(customParseResult.encounters, romHandler, new Random(seed));
+
+            romHandler.setEncounters(useTimeOfDay, customParseResult.encounters);
+            wildsChanged = true;
+
+            // Apply custom starters if specified in the file
+            if (customParseResult.customStarters != null) {
+                List<Pokemon> starters = customParseResult.customStarters;
+                boolean allSet = starters.stream().allMatch(p -> p != null);
+                if (allSet) {
+                    List<Pokemon> romStarters = romHandler.getStarters();
+                    for (int i = 0; i < Math.min(starters.size(), romStarters.size()); i++) {
+                        romStarters.set(i, starters.get(i));
+                    }
+                    romHandler.setStarters(romStarters);
+                    startersChanged = true;
+                    log.println("Custom Starters from file:");
+                    for (int i = 0; i < starters.size(); i++) {
+                        log.println("  Starter " + (i + 1) + ": " + starters.get(i).name);
+                    }
+                    log.println();
                 }
-                break;
+            }
+
+            // Apply custom static Pokemon if specified in the file
+            if (customParseResult.customStatics != null && romHandler.canChangeStaticPokemon()) {
+                List<StaticEncounter> origStatics = romHandler.getStaticPokemon();
+                for (CustomEncounterFile.StaticSlotData ssd : customParseResult.customStatics) {
+                    if (ssd.romIndex >= 0 && ssd.romIndex < origStatics.size() && ssd.pokemon != null) {
+                        StaticEncounter se = origStatics.get(ssd.romIndex);
+                        se.pkmn = ssd.pokemon;
+                        se.level = ssd.level;
+                    }
+                }
+                romHandler.setStaticPokemon(origStatics);
+                staticsChanged = true;
+                log.println("Custom Static Pokemon from file:");
+                for (CustomEncounterFile.StaticSlotData ssd : customParseResult.customStatics) {
+                    if (ssd.pokemon != null) {
+                        log.println("  Static " + ssd.romIndex + ": " + ssd.pokemon.name + " Lv" + ssd.level);
+                    }
+                }
+                log.println();
+            }
+        }
+
+        if (customParseResult == null) {
+            switch (settings.getWildPokemonMod()) {
+                case RANDOM:
+                    romHandler.randomEncounters(settings);
+                    wildsChanged = true;
+                    break;
+                case AREA_MAPPING:
+                    romHandler.area1to1Encounters(settings);
+                    wildsChanged = true;
+                    break;
+                case GLOBAL_MAPPING:
+                    romHandler.game1to1Encounters(settings);
+                    wildsChanged = true;
+                    break;
+                default:
+                    if (settings.isWildLevelsModified()) {
+                        romHandler.onlyChangeWildLevels(settings);
+                        wildsChanged = true;
+                    }
+                    break;
+            }
         }
 
         if (wildsChanged) {

@@ -2581,6 +2581,150 @@ public class Gen2RomHandler extends AbstractGBCRomHandler {
 
     }
 
+    /**
+     * Debug export: builds a mapping of trainer index -> map location name
+     * by reading person events on each map and identifying trainers.
+     */
+    public Map<Integer, String> getTrainerLocationMap() {
+        Map<Integer, String> trainerLocations = new LinkedHashMap<>();
+
+        // Build a lookup: (trainerclass, number-within-class) -> trainer index
+        List<Trainer> allTrainers = getTrainers();
+        // Group trainers by class to find their within-class index
+        Map<Integer, List<Trainer>> byClass = new LinkedHashMap<>();
+        for (Trainer t : allTrainers) {
+            byClass.computeIfAbsent(t.trainerclass, k -> new ArrayList<>()).add(t);
+        }
+
+        int mhOffset = romEntry.getValue("MapHeaders");
+        int mapGroupCount = Gen2Constants.mapGroupCount;
+        int mapsInLastGroup = Gen2Constants.mapsInLastGroup;
+        int mhBank = bankOf(mhOffset);
+
+        int[] groupOffsets = new int[mapGroupCount];
+        for (int i = 0; i < mapGroupCount; i++) {
+            groupOffsets[i] = calculateOffset(mhBank, readWord(mhOffset + i * 2));
+        }
+
+        for (int mg = 0; mg < mapGroupCount; mg++) {
+            int offset = groupOffsets[mg];
+            int maxOffset = (mg == mapGroupCount - 1) ? (mhBank + 1) * GBConstants.bankSize : groupOffsets[mg + 1];
+            int map = 0;
+            int maxMap = (mg == mapGroupCount - 1) ? mapsInLastGroup : Integer.MAX_VALUE;
+            while (offset < maxOffset && map < maxMap) {
+                extractTrainersFromMap(offset, mg + 1, map + 1, byClass, trainerLocations);
+                offset += 9;
+                map++;
+            }
+        }
+
+        return trainerLocations;
+    }
+
+    private void extractTrainersFromMap(int offset, int mapBank, int mapNumber,
+                                         Map<Integer, List<Trainer>> byClass,
+                                         Map<Integer, String> trainerLocations) {
+        String locationName = mapNames[mapBank][mapNumber];
+        if (locationName == null || locationName.isEmpty()) {
+            locationName = "Unknown (" + mapBank + "-" + mapNumber + ")";
+        }
+
+        int smhBank = rom[offset] & 0xFF;
+        int smhPointer = readWord(offset + 3);
+        int smhOffset = calculateOffset(smhBank, smhPointer);
+
+        int ehBank = rom[smhOffset + 6] & 0xFF;
+        int ehPointer = readWord(smhOffset + 9);
+        int ehOffset = calculateOffset(ehBank, ehPointer);
+
+        // skip filler
+        ehOffset += 2;
+
+        // skip warps
+        int warpCount = rom[ehOffset++] & 0xFF;
+        ehOffset += warpCount * 5;
+
+        // skip xy triggers
+        int triggerCount = rom[ehOffset++] & 0xFF;
+        ehOffset += triggerCount * 8;
+
+        // skip signposts
+        int signpostCount = rom[ehOffset++] & 0xFF;
+        ehOffset += signpostCount * 5;
+
+        // visible objects/people
+        int peopleCount = rom[ehOffset++] & 0xFF;
+        for (int p = 0; p < peopleCount; p++) {
+            int personOffset = ehOffset + p * 13;
+            int colorFunction = rom[personOffset + 7] & 0xFF;
+
+            // In Crystal, person type is in the lower bits of byte 7:
+            // PERSONTYPE_SCRIPT = 0, PERSONTYPE_ITEMBALL = 1, PERSONTYPE_TRAINER = 2
+            int personType = colorFunction & 0x0F;
+            if (personType == 2) {
+                // Trainer: script pointer at bytes 9-10 points to trainer header
+                // Trainer header contains: byte 0 = trainer class (1-based), byte 1 = trainer id (1-based)
+                int scriptPointer = readWord(personOffset + 9);
+                int scriptOffset = calculateOffset(ehBank, scriptPointer);
+
+                int trainerClass = rom[scriptOffset] & 0xFF;
+                int trainerNum = rom[scriptOffset + 1] & 0xFF;
+
+                // Look up the trainer by class and within-class number
+                List<Trainer> classTrainers = byClass.get(trainerClass - 1); // class is 1-based in ROM
+                if (classTrainers != null && trainerNum > 0 && trainerNum <= classTrainers.size()) {
+                    Trainer t = classTrainers.get(trainerNum - 1); // number is 1-based in ROM
+                    trainerLocations.put(t.index, locationName);
+                }
+            }
+        }
+    }
+
+    /**
+     * Debug export: writes trainer location data as JSON to a file.
+     */
+    public void exportTrainerLocations(java.io.File outputFile) throws java.io.IOException {
+        Map<Integer, String> locations = getTrainerLocationMap();
+        List<Trainer> allTrainers = getTrainers();
+        List<String> tcnames = getTrainerClassNames();
+
+        try (java.io.PrintWriter out = new java.io.PrintWriter(
+                new java.io.BufferedWriter(new java.io.FileWriter(outputFile)))) {
+            out.println("[");
+            boolean first = true;
+            for (Trainer t : allTrainers) {
+                if (!first) out.println(",");
+                first = false;
+                String location = locations.getOrDefault(t.index, "");
+                String className = (t.trainerclass >= 0 && t.trainerclass < tcnames.size())
+                        ? tcnames.get(t.trainerclass) : "";
+                out.print("  { \"index\": " + t.index
+                        + ", \"class\": " + jsonStr(className)
+                        + ", \"classId\": " + t.trainerclass
+                        + ", \"name\": " + jsonStr(t.name)
+                        + ", \"location\": " + jsonStr(location)
+                        + ", \"tag\": " + (t.tag != null ? jsonStr(t.tag) : "null")
+                        + " }");
+            }
+            out.println();
+            out.println("]");
+        }
+    }
+
+    private static String jsonStr(String s) {
+        if (s == null) return "null";
+        // Sanitize to ASCII-safe JSON - replace non-ASCII chars
+        StringBuilder sb = new StringBuilder("\"");
+        for (char c : s.toCharArray()) {
+            if (c == '\\') sb.append("\\\\");
+            else if (c == '"') sb.append("\\\"");
+            else if (c >= 32 && c < 127) sb.append(c);
+            else sb.append("?");
+        }
+        sb.append("\"");
+        return sb.toString();
+    }
+
     @Override
     public List<Integer> getRequiredFieldTMs() {
         return Gen2Constants.requiredFieldTMs;

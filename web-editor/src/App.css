@@ -1,0 +1,599 @@
+body {
+  font-family: "Times New Roman", serif;
+  margin: 8px;
+}
+
+a, .link { color: #0000EE; cursor: pointer; text-decoration: underline; }
+a:visited { color: #551A8B; }
+
+.file-label { cursor: pointer; }
+
+.app {
+  max-width: 800px;
+}
+
+hr {
+  border: none;
+  border-top: 1px solid #000;
+  margin: 8px 0;
+}
+
+.toolbar {
+  margin-bottom: 8px;
+}
+
+.toolbar-right {
+  margin-top: 4px;
+}
+
+.toolbar-right label,
+.toolbar-right button {
+  margin-right: 4px;
+}
+
+/* Global Filters */
+.global-filters {
+  margin-bottom: 4px;
+}
+
+.filter-row {
+  margin-bottom: 4px;
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 2px;
+}
+
+.filter-label {
+  font-weight: bold;
+  font-size: 0.85em;
+  margin-right: 4px;
+}
+
+.filter-btn, .type-filter-btn {
+  font-size: 0.8em;
+  padding: 1px 4px;
+  text-decoration: none;
+  border: 1px solid #ccc;
+  color: #333;
+}
+
+.filter-btn.active {
+  font-weight: bold;
+  border-color: #333;
+  background: #ddd;
+}
+
+.bst-input {
+  width: 50px;
+  text-align: center;
+  font-size: 0.85em;
+  padding: 1px 2px;
+}
+
+.type-filter-btn {
+  color: #fff;
+  border-color: transparent;
+  opacity: 0.4;
+}
+.type-filter-btn.active {
+  opacity: 1;
+  border-color: #333;
+}
+
+.type-filter-btn[data-type="normal"] { background: #a8a878; }
+.type-filter-btn[data-type="fire"] { background: #f08030; }
+.type-filter-btn[data-type="water"] { background: #6890f0; }
+.type-filter-btn[data-type="grass"] { background: #78c850; }
+.type-filter-btn[data-type="electric"] { background: #f8d030; color: #333; }
+.type-filter-btn[data-type="ice"] { background: #98d8d8; color: #333; }
+.type-filter-btn[data-type="fighting"] { background: #c03028; }
+.type-filter-btn[data-type="poison"] { background: #a040a0; }
+.type-filter-btn[data-type="ground"] { background: #e0c068; color: #333; }
+.type-filter-btn[data-type="flying"] { background: #a890f0; }
+.type-filter-btn[data-type="psychic"] { background: #f85888; }
+.type-filter-btn[data-type="bug"] { background: #a8b820; }
+.type-filter-btn[data-type="rock"] { background: #b8a038; }
+.type-filter-btn[data-type="ghost"] { background: #705898; }
+.type-filter-btn[data-type="dragon"] { background: #7038f8; }
+.type-filter-btn[data-type="dark"] { background: #705848; }
+.type-filter-btn[data-type="steel"] { background: #b8b8d0; color: #333; }
+
+/* Find & Replace */
+.find-replace {
+  margin: 8px 0;
+  padding: 8px;
+  border: 1px solid #ccc;
+  background: #f8f8f8;
+}
+
+.find-replace-row {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  margin-bottom: 4px;
+}
+
+.find-replace-label {
+  font-size: 0.9em;
+  font-weight: bold;
+  min-width: 80px;
+}
+
+.find-replace-count {
+  font-size: 0.85em;
+  color: #666;
+}
+
+.disabled-link {
+  color: #aaa;
+  pointer-events: none;
+}
+
+/* Filters */
+.filters {
+  margin-bottom: 8px;
+}
+
+.filter-buttons {
+  margin-top: 4px;
+}
+
+.filter-buttons button {
+  margin-right: 2px;
+}
+
+.filter-btn.active {
+  font-weight: bold;
+}
+
+/* Area */
+.area-editor {
+  margin-bottom: 12px;
+}
+
+.area-header {
+  cursor: pointer;
+  background: #e0e0e0;
+  padding: 2px 6px;
+}
+
+.area-slots {
+  padding-left: 10px;
+}
+
+/* Slot */
+.slot-editor {
+  margin: 4px 0;
+  padding: 2px 0;
+  border-bottom: 1px dotted #ccc;
+}
+
+.slot-header {
+  display: inline;
+}
+
+.slot-number {
+  font-weight: bold;
+  font-size: 0.85em;
+}
+
+.slot-chance {
+  font-size: 0.8em;
+  color: #555;
+  margin-left: 6px;
+}
+
+.slot-body {
+  display: inline;
+  margin-left: 8px;
+}
+
+.slot-row {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  flex-wrap: wrap;
+}
+
+.level-inputs {
+  display: inline;
+  font-size: 0.9em;
+}
+
+.level-input {
+  width: 40px;
+  text-align: center;
+}
+
+/* Pokemon Picker */
+.pokemon-picker {
+  display: inline-block;
+  position: relative;
+}
+
+.pokemon-picker-display {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  cursor: pointer;
+  border: 1px solid #999;
+  padding: 1px 4px;
+  background: #fff;
+}
+
+.pokemon-sprite-small {
+  width: 24px;
+  height: 24px;
+  image-rendering: pixelated;
+}
+
+.pokemon-name {
+  font-size: 0.9em;
+}
+
+.random-label {
+  font-style: italic;
+  color: #888;
+  font-size: 0.85em;
+}
+
+.clear-btn {
+  background: none;
+  border: none;
+  cursor: pointer;
+  color: red;
+  font-weight: bold;
+}
+
+.dropdown-arrow {
+  font-size: 0.7em;
+}
+
+/* Dropdown */
+.pokemon-dropdown {
+  position: absolute;
+  top: 100%;
+  left: 0;
+  background: #fff;
+  border: 1px solid #000;
+  z-index: 200;
+  width: 280px;
+}
+
+.pokemon-filters {
+  display: flex;
+  gap: 2px;
+  padding: 2px 4px;
+  border-bottom: 1px solid #ccc;
+  background: #f4f4f4;
+}
+
+.pokemon-filters select {
+  font-size: 0.75em;
+  flex: 1;
+  min-width: 0;
+  padding: 1px;
+}
+
+.pokemon-filter-count {
+  font-size: 0.75em;
+  color: #888;
+  text-align: center;
+  padding: 2px;
+  border-top: 1px solid #eee;
+}
+
+.pokemon-search {
+  width: 100%;
+  padding: 2px 4px;
+  border: none;
+  border-bottom: 1px solid #ccc;
+  font-size: 0.9em;
+  outline: none;
+  box-sizing: border-box;
+}
+
+.pokemon-list {
+  max-height: 200px;
+  overflow-y: auto;
+}
+
+.pokemon-option {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  padding: 1px 4px;
+  cursor: pointer;
+  font-size: 0.85em;
+}
+
+.pokemon-option:hover,
+.pokemon-option.highlighted {
+  background: #0000EE;
+  color: #fff;
+}
+
+.pokemon-option.selected {
+  font-weight: bold;
+}
+
+.pokemon-sprite-tiny {
+  width: 20px;
+  height: 20px;
+  image-rendering: pixelated;
+}
+
+.random-option-label {
+  font-style: italic;
+}
+
+/* Carousel */
+.carousel-nav {
+  margin-bottom: 4px;
+}
+
+.carousel-nav-row {
+  text-align: center;
+}
+
+.carousel-title {
+  font-size: 1.3em;
+  margin: 2px 0;
+}
+
+.carousel-counter {
+  font-size: 0.85em;
+  color: #555;
+}
+
+.carousel-progress {
+  font-size: 0.85em;
+  color: #555;
+}
+
+.carousel-image-container {
+  text-align: center;
+  margin: 4px 0;
+}
+
+.carousel-image {
+  max-width: 100%;
+  max-height: 300px;
+  image-rendering: pixelated;
+}
+
+.carousel-image-placeholder {
+  color: #999;
+  font-style: italic;
+  padding: 10px;
+}
+
+.carousel-slots {
+  padding-left: 10px;
+}
+
+.carousel-jump {
+  margin-top: 6px;
+}
+
+.carousel-jump-select {
+  max-width: 250px;
+}
+
+.carousel-area-label {
+  font-weight: bold;
+  margin: 8px 0 2px;
+  font-size: 0.95em;
+  border-bottom: 1px dotted #999;
+}
+
+.no-results {
+  color: #666;
+  font-style: italic;
+  padding: 10px;
+}
+
+/* Trainer editor */
+.trainer-editor {
+  margin-bottom: 10px;
+}
+
+.trainer-layout {
+  display: flex;
+  align-items: flex-start;
+  gap: 8px;
+}
+
+.trainer-sprite {
+  width: 56px;
+  height: 56px;
+  image-rendering: pixelated;
+  flex-shrink: 0;
+}
+
+.trainer-content {
+  flex: 1;
+  min-width: 0;
+}
+
+.trainer-name-line {
+  font-size: 0.95em;
+  margin-bottom: 2px;
+}
+
+.trainer-tag {
+  font-size: 0.8em;
+  color: #666;
+  margin-left: 4px;
+}
+
+.trainer-pokemon-list {
+  padding: 0;
+}
+
+.trainer-poke-slot {
+  margin: 3px 0;
+  padding: 2px 0;
+  border-bottom: 1px dotted #ccc;
+}
+
+.trainer-poke-main {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  flex-wrap: wrap;
+}
+
+.trainer-expand-btn {
+  font-size: 0.8em;
+  margin-left: 4px;
+}
+
+.trainer-poke-actions, .slot-actions {
+  font-size: 0.8em;
+  margin-left: 4px;
+}
+.trainer-poke-actions a, .slot-actions a {
+  margin-right: 2px;
+}
+
+.paste-sprite-hover {
+  width: 32px;
+  height: 32px;
+  image-rendering: pixelated;
+  z-index: 999;
+}
+
+.trainer-moves-preview {
+  font-size: 0.75em;
+  color: #777;
+}
+
+/* Trainer details (expanded) */
+.trainer-poke-details {
+  margin: 4px 0 4px 20px;
+  padding: 4px 8px;
+  border-left: 2px solid #ccc;
+  background: #f8f8f8;
+}
+
+.trainer-detail-label {
+  font-size: 0.85em;
+  font-weight: bold;
+  display: block;
+  margin-bottom: 2px;
+}
+
+.trainer-moves-editor {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.trainer-move-slot {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+}
+
+/* Move picker */
+.move-picker {
+  display: inline-block;
+  position: relative;
+}
+
+.move-picker-display {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  cursor: pointer;
+  border: 1px solid #999;
+  padding: 1px 6px;
+  background: #fff;
+  min-width: 120px;
+  font-size: 0.85em;
+}
+
+.move-name {
+  font-size: 0.9em;
+}
+
+.move-empty {
+  font-style: italic;
+  color: #aaa;
+  font-size: 0.85em;
+}
+
+.move-dropdown {
+  position: absolute;
+  top: 100%;
+  left: 0;
+  background: #fff;
+  border: 1px solid #000;
+  z-index: 200;
+  width: 280px;
+}
+
+.move-list {
+  max-height: 200px;
+  overflow-y: auto;
+}
+
+.move-type-badge {
+  display: inline-block;
+  font-size: 0.7em;
+  padding: 0 3px;
+  border-radius: 2px;
+  color: #fff;
+  background: #888;
+  min-width: 40px;
+  text-align: center;
+}
+.move-type-badge[data-type="normal"] { background: #a8a878; }
+.move-type-badge[data-type="fire"] { background: #f08030; }
+.move-type-badge[data-type="water"] { background: #6890f0; }
+.move-type-badge[data-type="grass"] { background: #78c850; }
+.move-type-badge[data-type="electric"] { background: #f8d030; color: #333; }
+.move-type-badge[data-type="ice"] { background: #98d8d8; color: #333; }
+.move-type-badge[data-type="fighting"] { background: #c03028; }
+.move-type-badge[data-type="poison"] { background: #a040a0; }
+.move-type-badge[data-type="ground"] { background: #e0c068; color: #333; }
+.move-type-badge[data-type="flying"] { background: #a890f0; }
+.move-type-badge[data-type="psychic"] { background: #f85888; }
+.move-type-badge[data-type="bug"] { background: #a8b820; }
+.move-type-badge[data-type="rock"] { background: #b8a038; }
+.move-type-badge[data-type="ghost"] { background: #705898; }
+.move-type-badge[data-type="dragon"] { background: #7038f8; }
+.move-type-badge[data-type="dark"] { background: #705848; }
+.move-type-badge[data-type="steel"] { background: #b8b8d0; color: #333; }
+
+.move-power {
+  font-size: 0.8em;
+  color: #888;
+}
+
+/* List view sections */
+.section-divider {
+  text-align: center;
+  color: #888;
+  margin: 12px 0 8px;
+  font-size: 0.9em;
+}
+
+.trainer-location-group {
+  margin-bottom: 12px;
+}
+
+.trainer-location-header {
+  font-weight: bold;
+  background: #c8d0c8;
+  padding: 2px 6px;
+  margin-bottom: 2px;
+}
+
+@media (max-width: 600px) {
+  .area-search {
+    width: 100%;
+  }
+}

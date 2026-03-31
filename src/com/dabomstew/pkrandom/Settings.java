@@ -211,6 +211,7 @@ public class Settings {
     private boolean wildLevelsModified;
     private int wildLevelModifier = 0;
     private boolean allowWildAltFormes;
+    private String customEncounterFilePath;
 
     public enum StaticPokemonMod {
         UNCHANGED, RANDOM_MATCHING, COMPLETELY_RANDOM, SIMILAR_STRENGTH
@@ -1796,6 +1797,14 @@ public class Settings {
 
     public void setUseTimeBasedEncounters(boolean useTimeBasedEncounters) {
         this.useTimeBasedEncounters = useTimeBasedEncounters;
+    }
+
+    public String getCustomEncounterFilePath() {
+        return customEncounterFilePath;
+    }
+
+    public void setCustomEncounterFilePath(String customEncounterFilePath) {
+        this.customEncounterFilePath = customEncounterFilePath;
     }
 
     public boolean isBlockWildLegendaries() {

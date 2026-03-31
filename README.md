@@ -1,35 +1,70 @@
-Universal Pokemon Randomizer ZX by Ajarmar
+# Chris' Pokemon Randomiser v1.0.0
 
-With significant contributions from darkeye, cleartonic
+A custom Pokemon randomiser with a web-based encounter and trainer editor, tailored for Pokemon Crystal.
 
-Based on the Universal Pokemon Randomizer by Dabomstew
+Forked from [Universal Pokemon Randomizer ZX](https://github.com/Ajarmar/universal-pokemon-randomizer-zx) by Ajarmar (originally by Dabomstew).
 
-# Info
+## Features
 
-This fork was originally made to make some minor tweaks and fixes, but became a bit more ambitious since 2020. There are several new features and supported games (including 3DS games) compared to the original Universal Pokemon Randomizer.
+- **Custom Encounters** — choose exactly which Pokemon appear on every route
+- **Custom Trainers** — edit every trainer's team, levels, and movesets
+- **Web Editor** — visual editor with location images, Pokemon sprites, type filters, and more
+- **Combined File** — one text file for both encounters and trainers
+- **Game Data Export** — dump all ROM data (Pokemon, moves, items, trainers, learnsets, evolutions) as JSON
 
-Have a look at the [release page](https://github.com/Ajarmar/universal-pokemon-randomizer-zx/releases) for changelogs and downloads.
+## Prerequisites
 
-# Contributing
+- **JDK 8** (1.8) — [Download from Adoptium](https://adoptium.net/temurin/releases/?version=8)
+- **IntelliJ IDEA** (Community or Ultimate) — needed for the GUI form compiler
 
-If you want to contribute something to the codebase, we'd recommend creating an issue for it first (using the`Contribution Idea` template). This way, we can discuss whether or not it's a good fit for the randomizer before you put in the work to implement it. This is just to save you time in the event that we don't think it's something we want to accept.
+## Building
 
-See [the Wiki Page](https://github.com/Ajarmar/universal-pokemon-randomizer-zx/wiki/Building-Universal-Pokemon-Randomizer-ZX) for setting up to build/test locally.
+From the project root:
 
-### What is a good fit for the randomizer?
+```bash
+bash build.sh
+```
 
-In general, we try to make settings as universal as possible. This means that it preferably should work in as many games as possible, and also that it's something that many people will find useful. If the setting is very niche, it will mostly just bloat the GUI.
+This compiles the source, instruments the IntelliJ GUI forms, and outputs the JAR to the `launcher/` folder.
 
-If your idea is a change to an existing setting rather than a new setting, it needs to be well motivated.
+## Running
 
-# Feature requests
+Double-click `launcher/launcher_WINDOWS.bat`, or from bash:
 
-We do not take feature requests.
+```bash
+cd launcher
+"/c/Program Files/Java/jdk1.8.0_202/bin/java" -Xmx4608M -jar PokeRandoZX.jar please-use-the-launcher
+```
 
-# Bug reports
+## Web Editor
 
-If you encounter something that seems to be a bug, submit an issue using the `Bug Report` issue template.
+```bash
+cd web-editor
+npm install
+npm run dev
+```
 
-# Other problems
+## Project Structure
 
-If you have problems using the randomizer, it could be because of some problem with Java or your operating system. **If you have problems with starting the randomizer specifically, [read this page first before creating an issue.](https://github.com/Ajarmar/universal-pokemon-randomizer-zx/wiki/About-Java)** If that page does not solve your problem, submit an issue using the `Need Help` issue template.
+```
+src/
+  com/dabomstew/pkrandom/
+    romhandlers/       # ROM-specific logic (Gen2RomHandler.java = Crystal)
+    constants/         # Game constants (Gen2Constants.java)
+    config/            # Offset tables, character encodings
+    newgui/            # Swing GUI
+    pokemon/           # Data classes (Pokemon, Move, Trainer, etc.)
+    patches/           # IPS patches
+    CustomEncounterFile.java  # Template generation/parsing
+    GameDataExporter.java     # JSON data export
+    Randomizer.java           # Core randomization logic
+    Settings.java             # Randomizer settings
+web-editor/            # React web editor
+launcher/              # Launcher scripts + output JAR
+```
+
+## Credits
+
+- [Ajarmar](https://github.com/Ajarmar/universal-pokemon-randomizer-zx) — Universal Pokemon Randomizer ZX (upstream fork)
+- Dabomstew — Original Universal Pokemon Randomizer
+- darkeye, cleartonic — Significant contributions to UPR-ZX

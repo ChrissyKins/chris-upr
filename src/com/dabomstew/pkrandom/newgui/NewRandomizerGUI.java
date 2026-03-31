@@ -218,6 +218,9 @@ public class NewRandomizerGUI {
     private JPanel miscTweaksPanel;
     private JLabel gameMascotLabel;
     private JPanel baseTweaksPanel;
+    private JPanel chrisCustomsPanel;
+    private JButton debugExportGameDataButton;
+    private JFileChooser debugSaveChooser;
     private JLabel romNameLabel;
     private JLabel romCodeLabel;
     private JLabel romSupportLabel;
@@ -300,6 +303,15 @@ public class NewRandomizerGUI {
     private JCheckBox paEnsureTwoAbilitiesCheckbox;
     private JCheckBox miscUpdateRotomFormeTypingCheckBox;
     private JCheckBox miscDisableLowHPMusicCheckBox;
+
+    // Custom encounter file components (created programmatically)
+    // wpGenerateTemplateButton removed
+    private JButton wpImportCustomFileButton;
+    private JButton wpClearCustomFileButton;
+    private JLabel wpCustomFileStatusLabel;
+    private String customEncounterFilePath = null;
+    private JFileChooser customEncounterOpenChooser = new JFileChooser();
+    // customEncounterSaveChooser removed
 
     private static JFrame frame;
 
@@ -726,6 +738,179 @@ public class NewRandomizerGUI {
         batchRandomizationMenuItem = new JMenuItem();
         batchRandomizationMenuItem.setText(bundle.getString("GUI.batchRandomizationMenuItem.text"));
         settingsMenu.add(batchRandomizationMenuItem);
+
+        initCustomEncounterPanel();
+    }
+
+    private void initCustomEncounterPanel() {
+        chrisCustomsPanel.removeAll();
+        chrisCustomsPanel.setLayout(new GridBagLayout());
+
+        GridBagConstraints outerGbc = new GridBagConstraints();
+        outerGbc.insets = new Insets(5, 5, 5, 5);
+        outerGbc.anchor = GridBagConstraints.NORTHWEST;
+        outerGbc.fill = GridBagConstraints.HORIZONTAL;
+        outerGbc.weightx = 1.0;
+
+        // Customised Encounters/Trainers section
+        JPanel customSection = new JPanel(new GridBagLayout());
+        customSection.setBorder(javax.swing.BorderFactory.createTitledBorder(
+                null, "Customised Encounters / Trainers",
+                javax.swing.border.TitledBorder.DEFAULT_JUSTIFICATION,
+                javax.swing.border.TitledBorder.DEFAULT_POSITION,
+                new java.awt.Font(customSection.getFont().getName(), java.awt.Font.BOLD, customSection.getFont().getSize())));
+
+        GridBagConstraints gbc = new GridBagConstraints();
+        gbc.insets = new Insets(5, 10, 5, 10);
+        gbc.anchor = GridBagConstraints.WEST;
+
+        // Import
+        gbc.gridx = 0; gbc.gridy = 0; gbc.gridwidth = 1;
+        wpImportCustomFileButton = new JButton("Import Custom File");
+        wpImportCustomFileButton.setEnabled(false);
+        wpImportCustomFileButton.setToolTipText("Import a custom encounters/trainers JSON file from the web editor");
+        wpImportCustomFileButton.addActionListener(e -> importCustomEncounterFile());
+        customSection.add(wpImportCustomFileButton, gbc);
+
+        gbc.gridx = 1;
+        wpClearCustomFileButton = new JButton("Clear");
+        wpClearCustomFileButton.setEnabled(false);
+        wpClearCustomFileButton.setToolTipText("Remove the imported custom file");
+        wpClearCustomFileButton.addActionListener(e -> clearCustomEncounterFile());
+        customSection.add(wpClearCustomFileButton, gbc);
+
+        // Status label
+        gbc.gridx = 0; gbc.gridy = 1; gbc.gridwidth = 2;
+        wpCustomFileStatusLabel = new JLabel("No ROM loaded - load a ROM first");
+        wpCustomFileStatusLabel.setForeground(Color.GRAY);
+        customSection.add(wpCustomFileStatusLabel, gbc);
+
+        outerGbc.gridx = 0; outerGbc.gridy = 0;
+        chrisCustomsPanel.add(customSection, outerGbc);
+
+        // Spacer to push everything to the top
+        outerGbc.gridy = 1; outerGbc.weighty = 1.0; outerGbc.fill = GridBagConstraints.VERTICAL;
+        chrisCustomsPanel.add(new JPanel(), outerGbc);
+
+        // File choosers
+        javax.swing.filechooser.FileNameExtensionFilter jsonFilter =
+                new javax.swing.filechooser.FileNameExtensionFilter("Encounter Files (*.json)", "json");
+        customEncounterOpenChooser.setFileFilter(jsonFilter);
+
+        // Debug tab
+        initDebugPanel();
+    }
+
+    private void initDebugPanel() {
+        JPanel debugPanel = new JPanel(new GridBagLayout());
+        GridBagConstraints gbc = new GridBagConstraints();
+        gbc.insets = new Insets(5, 10, 5, 10);
+        gbc.anchor = GridBagConstraints.WEST;
+
+        gbc.gridx = 0; gbc.gridy = 0;
+        debugExportGameDataButton = new JButton("Export Game Data (JSON)");
+        debugExportGameDataButton.setEnabled(false);
+        debugExportGameDataButton.setToolTipText("Export all game data (Pokemon, moves, items, trainers, encounters, locations) as a single JSON file");
+        debugExportGameDataButton.addActionListener(e -> debugExportGameData());
+        debugPanel.add(debugExportGameDataButton, gbc);
+
+        // Spacer
+        gbc.gridy = 1; gbc.weighty = 1.0; gbc.fill = GridBagConstraints.VERTICAL;
+        debugPanel.add(new JPanel(), gbc);
+
+        javax.swing.filechooser.FileNameExtensionFilter jsonFilter =
+                new javax.swing.filechooser.FileNameExtensionFilter("JSON Files (*.json)", "json");
+        debugSaveChooser = new JFileChooser();
+        debugSaveChooser.setDialogType(JFileChooser.SAVE_DIALOG);
+        debugSaveChooser.setFileFilter(jsonFilter);
+
+        tabbedPane1.addTab("Debug", debugPanel);
+    }
+
+    private void debugExportGameData() {
+        if (romHandler == null) {
+            JOptionPane.showMessageDialog(frame, "Please load a ROM first.");
+            return;
+        }
+        String defaultName = "gamedata_" + romHandler.getROMCode().toLowerCase().replaceAll("[^a-z0-9]", "") + ".json";
+        debugSaveChooser.setSelectedFile(new java.io.File(defaultName));
+        int returnVal = debugSaveChooser.showSaveDialog(frame);
+        if (returnVal == JFileChooser.APPROVE_OPTION) {
+            java.io.File file = debugSaveChooser.getSelectedFile();
+            if (!file.getName().endsWith(".json")) {
+                file = new java.io.File(file.getAbsolutePath() + ".json");
+            }
+            try {
+                GameDataExporter.exportAll(romHandler, file);
+                long sizeKb = file.length() / 1024;
+                JOptionPane.showMessageDialog(frame,
+                        "Game data exported to:\n" + file.getAbsolutePath() + "\n\nSize: " + sizeKb + " KB",
+                        "Export Complete", JOptionPane.INFORMATION_MESSAGE);
+            } catch (IOException ex) {
+                JOptionPane.showMessageDialog(frame,
+                        "Error exporting: " + ex.getMessage(),
+                        "Error", JOptionPane.ERROR_MESSAGE);
+            }
+        }
+    }
+
+    private void importCustomEncounterFile() {
+        if (romHandler == null) {
+            JOptionPane.showMessageDialog(frame, "Please load a ROM first.");
+            return;
+        }
+        customEncounterOpenChooser.setSelectedFile(null);
+        int returnVal = customEncounterOpenChooser.showOpenDialog(frame);
+        if (returnVal == JFileChooser.APPROVE_OPTION) {
+            File file = customEncounterOpenChooser.getSelectedFile();
+            try {
+                // Validate the file by parsing it
+                boolean useTimeOfDay = wpUseTimeBasedEncountersCheckBox.isSelected();
+                CustomEncounterFile.ParseResult result =
+                        CustomEncounterFile.parseFile(file, romHandler, useTimeOfDay);
+
+                if (result.hasErrors()) {
+                    StringBuilder errorMsg = new StringBuilder("The file has some errors:\n\n");
+                    for (String error : result.errors) {
+                        errorMsg.append("  - ").append(error).append("\n");
+                    }
+                    errorMsg.append("\nPlease fix these and try again.");
+                    JOptionPane.showMessageDialog(frame, errorMsg.toString(),
+                            "Import Errors", JOptionPane.ERROR_MESSAGE);
+                    return;
+                }
+
+                customEncounterFilePath = file.getAbsolutePath();
+                wpCustomFileStatusLabel.setText("Loaded: " + file.getName());
+                wpCustomFileStatusLabel.setForeground(new Color(0, 128, 0));
+                wpClearCustomFileButton.setEnabled(true);
+
+                if (result.hasWarnings()) {
+                    StringBuilder warnMsg = new StringBuilder("File imported successfully, but with warnings:\n\n");
+                    for (String warning : result.warnings) {
+                        warnMsg.append("  - ").append(warning).append("\n");
+                    }
+                    JOptionPane.showMessageDialog(frame, warnMsg.toString(),
+                            "Import Warnings", JOptionPane.WARNING_MESSAGE);
+                } else {
+                    JOptionPane.showMessageDialog(frame,
+                            "Custom encounter file imported successfully!\n\n" +
+                            "When you click 'Randomize (Save)', these encounters will be applied.",
+                            "Import Successful", JOptionPane.INFORMATION_MESSAGE);
+                }
+            } catch (IOException ex) {
+                JOptionPane.showMessageDialog(frame,
+                        "Error reading file: " + ex.getMessage(),
+                        "Error", JOptionPane.ERROR_MESSAGE);
+            }
+        }
+    }
+
+    private void clearCustomEncounterFile() {
+        customEncounterFilePath = null;
+        wpCustomFileStatusLabel.setText("No custom file loaded");
+        wpCustomFileStatusLabel.setForeground(Color.GRAY);
+        wpClearCustomFileButton.setEnabled(false);
     }
 
     private void loadROM() {
@@ -1818,6 +2003,7 @@ public class NewRandomizerGUI {
         settings.setWildPokemonRestrictionMod(wpARNoneRadioButton.isSelected(), wpARSimilarStrengthRadioButton.isSelected(),
                 wpARCatchEmAllModeRadioButton.isSelected(), wpARTypeThemeAreasRadioButton.isSelected());
         settings.setUseTimeBasedEncounters(wpUseTimeBasedEncountersCheckBox.isSelected());
+        settings.setCustomEncounterFilePath(customEncounterFilePath);
         settings.setUseMinimumCatchRate(wpSetMinimumCatchRateCheckBox.isSelected());
         settings.setMinimumCatchRateLevel(wpSetMinimumCatchRateSlider.getValue());
         settings.setBlockWildLegendaries(wpDontUseLegendariesCheckBox.isSelected());
@@ -2905,6 +3091,16 @@ public class NewRandomizerGUI {
             wpRandomRadioButton.setEnabled(true);
             wpArea1To1RadioButton.setEnabled(true);
             wpGlobal1To1RadioButton.setEnabled(true);
+
+            // Custom encounters
+            wpImportCustomFileButton.setEnabled(true);
+            wpCustomFileStatusLabel.setText("No custom file loaded");
+            wpCustomFileStatusLabel.setForeground(Color.GRAY);
+            customEncounterFilePath = null;
+            wpClearCustomFileButton.setEnabled(false);
+
+            // Debug exports
+            debugExportGameDataButton.setEnabled(true);
 
             wpARNoneRadioButton.setSelected(true);
 
