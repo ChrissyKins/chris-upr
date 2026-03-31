@@ -53,6 +53,5 @@ custom_encounters.json
 # Built artifacts
 launcher/PokeRandoZX.jar
 
-# Web editor
-web-editor/node_modules/
-web-editor/dist/
+# Web editor (separate repo)
+web-editor/
