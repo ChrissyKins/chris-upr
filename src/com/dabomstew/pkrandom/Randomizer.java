@@ -107,6 +107,35 @@ public class Randomizer {
             romHandler.removeEvosForPokemonPool();
         }
 
+        // Parse custom file early so all sections can use it
+        String customEncounterPath = settings.getCustomEncounterFilePath();
+        CustomEncounterFile.ParseResult customParseResult = null;
+        if (customEncounterPath != null && !customEncounterPath.isEmpty()) {
+            try {
+                boolean useTimeOfDay = settings.isUseTimeBasedEncounters();
+                File customFile = new File(customEncounterPath);
+                customParseResult = CustomEncounterFile.parseFile(customFile, romHandler, useTimeOfDay);
+
+                if (customParseResult.hasErrors()) {
+                    log.println("Custom File Errors:");
+                    for (String error : customParseResult.errors) {
+                        log.println("  " + error);
+                    }
+                }
+                if (customParseResult.hasWarnings()) {
+                    log.println("Custom File Warnings:");
+                    for (String warning : customParseResult.warnings) {
+                        log.println("  " + warning);
+                    }
+                }
+            } catch (IOException e) {
+                log.println("Error reading custom file: " + e.getMessage());
+                log.println("Falling back to normal settings.");
+                customEncounterPath = null;
+                customParseResult = null;
+            }
+        }
+
         // Move updates & data changes
         // 1. Update moves to a future generation
         // 2. Randomize move stats
@@ -309,6 +338,27 @@ public class Randomizer {
             movesetsChanged = true;
         }
 
+        // Apply custom learnsets from file
+        if (customParseResult != null && customParseResult.customLearnsets != null) {
+            Map<Integer, List<MoveLearnt>> currentMovesets = romHandler.getMovesLearnt();
+            for (Map.Entry<Integer, List<CustomEncounterFile.LearnsetEntry>> entry : customParseResult.customLearnsets.entrySet()) {
+                int pokemonId = entry.getKey();
+                List<CustomEncounterFile.LearnsetEntry> entries = entry.getValue();
+                List<MoveLearnt> newMoves = new ArrayList<>();
+                for (CustomEncounterFile.LearnsetEntry le : entries) {
+                    MoveLearnt ml = new MoveLearnt();
+                    ml.move = le.moveId;
+                    ml.level = le.level;
+                    newMoves.add(ml);
+                }
+                currentMovesets.put(pokemonId, newMoves);
+            }
+            romHandler.setMovesLearnt(currentMovesets);
+            movesetsChanged = true;
+            log.println("Custom learnsets applied from file.");
+            log.println();
+        }
+
         // Show the new movesets if applicable
         if (movesetsChanged) {
             logMovesetChanges(log);
@@ -324,6 +374,22 @@ public class Randomizer {
                 && settings.getTmsMod() == Settings.TMsMod.RANDOM) {
             romHandler.randomizeTMMoves(settings);
             tmMovesChanged = true;
+        }
+
+        // Apply custom TM moves from file (overrides randomized TMs)
+        if (customParseResult != null && customParseResult.customTMs != null) {
+            List<Integer> tmMoves = romHandler.getTMMoves();
+            for (Map.Entry<Integer, Integer> entry : customParseResult.customTMs.entrySet()) {
+                int tmNum = entry.getKey();
+                int moveId = entry.getValue();
+                if (tmNum >= 1 && tmNum <= tmMoves.size()) {
+                    tmMoves.set(tmNum - 1, moveId);
+                }
+            }
+            romHandler.setTMMoves(tmMoves);
+            tmMovesChanged = true;
+            log.println("Custom TM moves applied from file.");
+            log.println();
         }
 
         if (tmMovesChanged) {
@@ -386,6 +452,22 @@ public class Randomizer {
                 moveTutorMovesChanged = true;
             }
 
+            // Apply custom move tutor moves from file
+            if (customParseResult != null && customParseResult.customMoveTutors != null) {
+                List<Integer> mtMoves = romHandler.getMoveTutorMoves();
+                for (Map.Entry<Integer, Integer> entry : customParseResult.customMoveTutors.entrySet()) {
+                    int idx = entry.getKey();
+                    int moveId = entry.getValue();
+                    if (idx >= 0 && idx < mtMoves.size()) {
+                        mtMoves.set(idx, moveId);
+                    }
+                }
+                romHandler.setMoveTutorMoves(mtMoves);
+                moveTutorMovesChanged = true;
+                log.println("Custom Move Tutor moves applied from file.");
+                log.println();
+            }
+
             if (moveTutorMovesChanged) {
                 checkValue = logMoveTutorMoves(log, checkValue, oldMtMoves);
             } else if (settings.getMovesetsMod() == Settings.MovesetsMod.METRONOME_ONLY) {
@@ -430,33 +512,72 @@ public class Randomizer {
 
         }
 
-        // Parse custom encounter/trainer file early so we can use it for both sections
-        String customEncounterPath = settings.getCustomEncounterFilePath();
-        CustomEncounterFile.ParseResult customParseResult = null;
-        if (customEncounterPath != null && !customEncounterPath.isEmpty()) {
-            try {
-                boolean useTimeOfDay = settings.isUseTimeBasedEncounters();
-                File customFile = new File(customEncounterPath);
-                customParseResult = CustomEncounterFile.parseFile(customFile, romHandler, useTimeOfDay);
-
-                if (customParseResult.hasErrors()) {
-                    log.println("Custom File Errors:");
-                    for (String error : customParseResult.errors) {
-                        log.println("  " + error);
-                    }
+        // Apply custom Pokemon edits (stats/types) from file — done early so all downstream logic uses new stats
+        if (customParseResult != null && customParseResult.customPokemonEdits != null) {
+            List<Pokemon> allPokemon = romHandler.getPokemon();
+            for (CustomEncounterFile.PokemonEditData ped : customParseResult.customPokemonEdits) {
+                Pokemon pk = (ped.id >= 1 && ped.id < allPokemon.size()) ? allPokemon.get(ped.id) : null;
+                if (pk == null) {
+                    log.println("Warning: Unknown Pokemon ID " + ped.id + " in pokemonEdits, skipping.");
+                    continue;
                 }
-                if (customParseResult.hasWarnings()) {
-                    log.println("Custom File Warnings:");
-                    for (String warning : customParseResult.warnings) {
-                        log.println("  " + warning);
-                    }
+                if (ped.type1 != null) {
+                    try { pk.primaryType = Type.valueOf(ped.type1); }
+                    catch (IllegalArgumentException e) { log.println("Warning: Unknown type '" + ped.type1 + "' for Pokemon " + pk.name); }
                 }
-            } catch (IOException e) {
-                log.println("Error reading custom file: " + e.getMessage());
-                log.println("Falling back to normal settings.");
-                customEncounterPath = null;
-                customParseResult = null;
+                if (ped.type2 != null) {
+                    try { pk.secondaryType = Type.valueOf(ped.type2); }
+                    catch (IllegalArgumentException e) { log.println("Warning: Unknown type '" + ped.type2 + "' for Pokemon " + pk.name); }
+                } else if (ped.type1 != null) {
+                    // If type1 is set but type2 is explicitly null, clear the secondary type
+                    pk.secondaryType = null;
+                }
+                if (ped.hp >= 0) pk.hp = ped.hp;
+                if (ped.attack >= 0) pk.attack = ped.attack;
+                if (ped.defense >= 0) pk.defense = ped.defense;
+                if (ped.spatk >= 0) pk.spatk = ped.spatk;
+                if (ped.spdef >= 0) pk.spdef = ped.spdef;
+                if (ped.speed >= 0) pk.speed = ped.speed;
             }
+            pokemonTraitsChanged = true;
+            log.println("Custom Pokemon edits applied from file.");
+            log.println();
+        }
+
+        // Apply custom evolution edits from file — done early so downstream logic uses new evolutions
+        if (customParseResult != null && customParseResult.customEvolutionEdits != null) {
+            List<Pokemon> allPokemon = romHandler.getPokemon();
+            for (CustomEncounterFile.EvolutionEditData eed : customParseResult.customEvolutionEdits) {
+                Pokemon from = (eed.fromId >= 1 && eed.fromId < allPokemon.size()) ? allPokemon.get(eed.fromId) : null;
+                Pokemon to = (eed.toId >= 1 && eed.toId < allPokemon.size()) ? allPokemon.get(eed.toId) : null;
+                if (from == null || to == null) {
+                    log.println("Warning: Unknown Pokemon ID in evolutionEdits (from=" + eed.fromId + ", to=" + eed.toId + "), skipping.");
+                    continue;
+                }
+                // Find existing evolution from->to and modify it, or add a new one
+                EvolutionType evoType = EvolutionType.LEVEL;
+                if (eed.method != null) {
+                    try { evoType = EvolutionType.valueOf(eed.method); }
+                    catch (IllegalArgumentException e) { log.println("Warning: Unknown evolution method '" + eed.method + "', defaulting to LEVEL"); }
+                }
+                boolean found = false;
+                for (Evolution evo : from.evolutionsFrom) {
+                    if (evo.to.number == to.number) {
+                        evo.type = evoType;
+                        evo.extraInfo = eed.extraInfo;
+                        found = true;
+                        break;
+                    }
+                }
+                if (!found) {
+                    Evolution newEvo = new Evolution(from, to, false, evoType, eed.extraInfo);
+                    from.evolutionsFrom.add(newEvo);
+                    to.evolutionsTo.add(newEvo);
+                }
+            }
+            evolutionsChanged = true;
+            log.println("Custom evolution edits applied from file.");
+            log.println();
         }
 
         // Trainer Pokemon
@@ -715,6 +836,34 @@ public class Randomizer {
                 break;
         }
 
+        // Apply custom in-game trades from file
+        if (customParseResult != null && customParseResult.customTrades != null) {
+            List<IngameTrade> trades = romHandler.getIngameTrades();
+            List<Pokemon> allPokemon = romHandler.getPokemon();
+            for (CustomEncounterFile.TradeData td : customParseResult.customTrades) {
+                if (td.index >= 0 && td.index < trades.size()) {
+                    IngameTrade trade = trades.get(td.index);
+                    if (td.givenPokemonId > 0) {
+                        Pokemon pk = (td.givenPokemonId < allPokemon.size()) ? allPokemon.get(td.givenPokemonId) : null;
+                        if (pk != null) trade.givenPokemon = pk;
+                        else log.println("Warning: Unknown given Pokemon ID " + td.givenPokemonId + " in trade #" + td.index);
+                    }
+                    if (td.requestedPokemonId > 0) {
+                        Pokemon pk = (td.requestedPokemonId < allPokemon.size()) ? allPokemon.get(td.requestedPokemonId) : null;
+                        if (pk != null) trade.requestedPokemon = pk;
+                        else log.println("Warning: Unknown requested Pokemon ID " + td.requestedPokemonId + " in trade #" + td.index);
+                    }
+                    if (td.nickname != null) trade.nickname = td.nickname;
+                    if (td.otName != null) trade.otName = td.otName;
+                    if (td.item >= 0) trade.item = td.item;
+                }
+            }
+            romHandler.setIngameTrades(trades);
+            tradesChanged = true;
+            log.println("Custom in-game trades applied from file.");
+            log.println();
+        }
+
         if (tradesChanged) {
             logTrades(log, oldTrades);
         }
@@ -732,6 +881,21 @@ public class Randomizer {
                 break;
         }
 
+        // Apply custom field items from file
+        if (customParseResult != null && customParseResult.customFieldItems != null) {
+            List<Integer> fieldItems = romHandler.getRegularFieldItems();
+            for (Map.Entry<Integer, Integer> entry : customParseResult.customFieldItems.entrySet()) {
+                int idx = entry.getKey();
+                int itemId = entry.getValue();
+                if (idx >= 0 && idx < fieldItems.size()) {
+                    fieldItems.set(idx, itemId);
+                }
+            }
+            romHandler.setRegularFieldItems(fieldItems);
+            log.println("Custom field items applied from file.");
+            log.println();
+        }
+
         // Shops
 
         switch(settings.getShopItemsMod()) {
@@ -745,6 +909,25 @@ public class Randomizer {
                 break;
             default:
                 break;
+        }
+
+        // Apply custom shop items from file
+        if (customParseResult != null && customParseResult.customShops != null && romHandler.hasShopRandomization()) {
+            Map<Integer, Shop> shops = romHandler.getShopItems();
+            for (Map.Entry<Integer, CustomEncounterFile.ShopData> entry : customParseResult.customShops.entrySet()) {
+                int shopIdx = entry.getKey();
+                CustomEncounterFile.ShopData sd = entry.getValue();
+                Shop shop = shops.get(shopIdx);
+                if (shop != null && sd.items != null && !sd.items.isEmpty()) {
+                    shop.items = new ArrayList<>(sd.items);
+                } else if (shop == null) {
+                    log.println("Warning: Unknown shop index " + shopIdx + ", skipping.");
+                }
+            }
+            romHandler.setShopItems(shops);
+            shopsChanged = true;
+            log.println("Custom shop items applied from file.");
+            log.println();
         }
 
         if (shopsChanged) {

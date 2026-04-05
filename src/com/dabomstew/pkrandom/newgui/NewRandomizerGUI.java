@@ -779,8 +779,18 @@ public class NewRandomizerGUI {
         wpClearCustomFileButton.addActionListener(e -> clearCustomEncounterFile());
         customSection.add(wpClearCustomFileButton, gbc);
 
+        gbc.gridx = 2;
+        JButton editorLinkButton = new JButton("Open Web Editor");
+        editorLinkButton.setToolTipText("Open pokemon.enda.cat to create your custom encounters/trainers file");
+        editorLinkButton.addActionListener(e -> {
+            try {
+                java.awt.Desktop.getDesktop().browse(new java.net.URI("https://pokemon.enda.cat"));
+            } catch (Exception ex) { /* ignore */ }
+        });
+        customSection.add(editorLinkButton, gbc);
+
         // Status label
-        gbc.gridx = 0; gbc.gridy = 1; gbc.gridwidth = 2;
+        gbc.gridx = 0; gbc.gridy = 1; gbc.gridwidth = 3;
         wpCustomFileStatusLabel = new JLabel("No ROM loaded - load a ROM first");
         wpCustomFileStatusLabel.setForeground(Color.GRAY);
         customSection.add(wpCustomFileStatusLabel, gbc);

@@ -23,11 +23,7 @@ package com.dabomstew.pkrandom;
 /*--  along with this program. If not, see <http://www.gnu.org/licenses/>.  --*/
 /*----------------------------------------------------------------------------*/
 
-import com.dabomstew.pkrandom.pokemon.Encounter;
-import com.dabomstew.pkrandom.pokemon.EncounterSet;
-import com.dabomstew.pkrandom.pokemon.Pokemon;
-import com.dabomstew.pkrandom.pokemon.Trainer;
-import com.dabomstew.pkrandom.pokemon.TrainerPokemon;
+import com.dabomstew.pkrandom.pokemon.*;
 import com.dabomstew.pkrandom.romhandlers.RomHandler;
 
 import java.io.*;
@@ -175,9 +171,225 @@ public class CustomEncounterFile {
                             tpd.pokemon = pk;
                         }
                         tpd.level = extractJsonInt(pokeObj, "level", 5);
+                        tpd.heldItem = extractJsonInt(pokeObj, "item", -1);
+                        // Parse custom moves array: "moves": [1, 33, 55, 0]
+                        int movesStart = pokeObj.indexOf("\"moves\"");
+                        if (movesStart >= 0) {
+                            int moveArrStart = pokeObj.indexOf('[', movesStart);
+                            if (moveArrStart >= 0) {
+                                int moveArrEnd = findMatchingBracket(pokeObj, moveArrStart);
+                                String moveArr = pokeObj.substring(moveArrStart + 1, moveArrEnd).trim();
+                                if (!moveArr.isEmpty()) {
+                                    tpd.moves = new int[4];
+                                    String[] moveParts = moveArr.split(",");
+                                    for (int m = 0; m < Math.min(moveParts.length, 4); m++) {
+                                        try { tpd.moves[m] = Integer.parseInt(moveParts[m].trim()); }
+                                        catch (NumberFormatException e) { /* leave as 0 */ }
+                                    }
+                                }
+                            }
+                        }
                         pokes.add(tpd);
                     }
                     parsedTrainers.put(index, pokes);
+                }
+            }
+        }
+
+        // Parse TM moves array: [{"tm": 1, "moveId": 55}, ...]
+        Map<Integer, Integer> parsedTMs = new LinkedHashMap<>();
+        int tmIdx = content.indexOf("\"tms\"");
+        if (tmIdx >= 0) {
+            int arrStart = content.indexOf('[', tmIdx);
+            if (arrStart >= 0) {
+                int arrEnd = findMatchingBracket(content, arrStart);
+                List<String> tmObjects = splitJsonArray(content.substring(arrStart, arrEnd + 1));
+                for (String tmObj : tmObjects) {
+                    int tmNum = extractJsonInt(tmObj, "tm", -1);
+                    int moveId = extractJsonInt(tmObj, "moveId", -1);
+                    if (tmNum > 0 && moveId >= 0) {
+                        parsedTMs.put(tmNum, moveId);
+                    }
+                }
+            }
+        }
+
+        // Parse move tutor moves array: [{"index": 0, "moveId": 55}, ...]
+        Map<Integer, Integer> parsedMoveTutors = new LinkedHashMap<>();
+        int mtIdx = content.indexOf("\"moveTutors\"");
+        if (mtIdx >= 0) {
+            int arrStart = content.indexOf('[', mtIdx);
+            if (arrStart >= 0) {
+                int arrEnd = findMatchingBracket(content, arrStart);
+                List<String> mtObjects = splitJsonArray(content.substring(arrStart, arrEnd + 1));
+                for (String mtObj : mtObjects) {
+                    int idx = extractJsonInt(mtObj, "index", -1);
+                    int moveId = extractJsonInt(mtObj, "moveId", -1);
+                    if (idx >= 0 && moveId >= 0) {
+                        parsedMoveTutors.put(idx, moveId);
+                    }
+                }
+            }
+        }
+
+        // Parse in-game trades: [{"index": 0, "givenPokemon": 25, "requestedPokemon": 100, "nickname": "SPARKY", "level": 10, "item": 0}, ...]
+        List<TradeData> parsedTrades = new ArrayList<>();
+        int tdIdx = content.indexOf("\"trades\"");
+        if (tdIdx >= 0) {
+            int arrStart = content.indexOf('[', tdIdx);
+            if (arrStart >= 0) {
+                int arrEnd = findMatchingBracket(content, arrStart);
+                List<String> tdObjects = splitJsonArray(content.substring(arrStart, arrEnd + 1));
+                for (String tdObj : tdObjects) {
+                    TradeData td = new TradeData();
+                    td.index = extractJsonInt(tdObj, "index", -1);
+                    if (td.index < 0) continue;
+                    td.givenPokemonId = extractJsonInt(tdObj, "givenPokemon", 0);
+                    td.requestedPokemonId = extractJsonInt(tdObj, "requestedPokemon", 0);
+                    td.nickname = extractJsonString(tdObj, "nickname");
+                    td.otName = extractJsonString(tdObj, "otName");
+                    td.item = extractJsonInt(tdObj, "item", -1);
+                    parsedTrades.add(td);
+                }
+            }
+        }
+
+        // Parse shop items: [{"index": 0, "name": "Cherrygrove City", "items": [4, 11, 30]}, ...]
+        Map<Integer, ShopData> parsedShops = new LinkedHashMap<>();
+        int shIdx = content.indexOf("\"shops\"");
+        if (shIdx >= 0) {
+            int arrStart = content.indexOf('[', shIdx);
+            if (arrStart >= 0) {
+                int arrEnd = findMatchingBracket(content, arrStart);
+                List<String> shObjects = splitJsonArray(content.substring(arrStart, arrEnd + 1));
+                for (String shObj : shObjects) {
+                    int idx = extractJsonInt(shObj, "index", -1);
+                    if (idx < 0) continue;
+                    ShopData sd = new ShopData();
+                    sd.name = extractJsonString(shObj, "name");
+                    sd.items = new ArrayList<>();
+                    int itemsStart = shObj.indexOf("\"items\"");
+                    if (itemsStart >= 0) {
+                        int itemArrStart = shObj.indexOf('[', itemsStart);
+                        if (itemArrStart >= 0) {
+                            int itemArrEnd = findMatchingBracket(shObj, itemArrStart);
+                            String itemArr = shObj.substring(itemArrStart + 1, itemArrEnd).trim();
+                            if (!itemArr.isEmpty()) {
+                                for (String itemStr : itemArr.split(",")) {
+                                    itemStr = itemStr.trim();
+                                    if (!itemStr.isEmpty()) {
+                                        try { sd.items.add(Integer.parseInt(itemStr)); }
+                                        catch (NumberFormatException e) { /* skip */ }
+                                    }
+                                }
+                            }
+                        }
+                    }
+                    parsedShops.put(idx, sd);
+                }
+            }
+        }
+
+        // Parse field items: [{"index": 0, "item": 33}, ...]
+        Map<Integer, Integer> parsedFieldItems = new LinkedHashMap<>();
+        int fiIdx = content.indexOf("\"fieldItems\"");
+        if (fiIdx >= 0) {
+            int arrStart = content.indexOf('[', fiIdx);
+            if (arrStart >= 0) {
+                int arrEnd = findMatchingBracket(content, arrStart);
+                List<String> fiObjects = splitJsonArray(content.substring(arrStart, arrEnd + 1));
+                for (String fiObj : fiObjects) {
+                    int idx = extractJsonInt(fiObj, "index", -1);
+                    int itemId = extractJsonInt(fiObj, "item", -1);
+                    if (idx >= 0 && itemId >= 0) {
+                        parsedFieldItems.put(idx, itemId);
+                    }
+                }
+            }
+        }
+
+        // Parse learnsets: {"pokemonId": [{"moveId": 33, "level": 1}, ...], ...}
+        Map<Integer, List<LearnsetEntry>> parsedLearnsets = new LinkedHashMap<>();
+        int lsIdx = content.indexOf("\"learnsets\"");
+        if (lsIdx >= 0) {
+            int objStart = content.indexOf('{', lsIdx + 11);
+            if (objStart >= 0) {
+                int objEnd = findMatchingBracket(content, objStart);
+                String lsContent = content.substring(objStart + 1, objEnd).trim();
+                // Parse key-value pairs where keys are pokemon IDs and values are move arrays
+                int pos = 0;
+                while (pos < lsContent.length()) {
+                    int keyStart = lsContent.indexOf('"', pos);
+                    if (keyStart < 0) break;
+                    int keyEnd = lsContent.indexOf('"', keyStart + 1);
+                    if (keyEnd < 0) break;
+                    String keyStr = lsContent.substring(keyStart + 1, keyEnd);
+                    int pokemonId;
+                    try { pokemonId = Integer.parseInt(keyStr); }
+                    catch (NumberFormatException e) { pos = keyEnd + 1; continue; }
+
+                    int moveArrStart = lsContent.indexOf('[', keyEnd);
+                    if (moveArrStart < 0) break;
+                    int moveArrEnd = findMatchingBracket(lsContent, moveArrStart);
+                    List<String> moveObjects = splitJsonArray(lsContent.substring(moveArrStart, moveArrEnd + 1));
+                    List<LearnsetEntry> entries = new ArrayList<>();
+                    for (String moveObj : moveObjects) {
+                        LearnsetEntry le = new LearnsetEntry();
+                        le.moveId = extractJsonInt(moveObj, "moveId", -1);
+                        le.level = extractJsonInt(moveObj, "level", 1);
+                        if (le.moveId >= 0) {
+                            entries.add(le);
+                        }
+                    }
+                    if (!entries.isEmpty()) {
+                        parsedLearnsets.put(pokemonId, entries);
+                    }
+                    pos = moveArrEnd + 1;
+                }
+            }
+        }
+
+        // Parse Pokemon edits: [{"id": 25, "type1": "ELECTRIC", "type2": null, "hp": 35, "atk": 55, ...}, ...]
+        List<PokemonEditData> parsedPokemonEdits = new ArrayList<>();
+        int peIdx = content.indexOf("\"pokemonEdits\"");
+        if (peIdx >= 0) {
+            int arrStart = content.indexOf('[', peIdx);
+            if (arrStart >= 0) {
+                int arrEnd = findMatchingBracket(content, arrStart);
+                List<String> peObjects = splitJsonArray(content.substring(arrStart, arrEnd + 1));
+                for (String peObj : peObjects) {
+                    PokemonEditData ped = new PokemonEditData();
+                    ped.id = extractJsonInt(peObj, "id", -1);
+                    if (ped.id < 0) continue;
+                    ped.type1 = extractJsonString(peObj, "type1");
+                    ped.type2 = extractJsonString(peObj, "type2");
+                    ped.hp = extractJsonInt(peObj, "hp", -1);
+                    ped.attack = extractJsonInt(peObj, "atk", -1);
+                    ped.defense = extractJsonInt(peObj, "def", -1);
+                    ped.spatk = extractJsonInt(peObj, "spatk", -1);
+                    ped.spdef = extractJsonInt(peObj, "spdef", -1);
+                    ped.speed = extractJsonInt(peObj, "speed", -1);
+                    parsedPokemonEdits.add(ped);
+                }
+            }
+        }
+
+        // Parse evolution edits: [{"fromId": 66, "toId": 67, "method": "LEVEL", "extraInfo": 28}, ...]
+        List<EvolutionEditData> parsedEvolutionEdits = new ArrayList<>();
+        int evIdx = content.indexOf("\"evolutionEdits\"");
+        if (evIdx >= 0) {
+            int arrStart = content.indexOf('[', evIdx);
+            if (arrStart >= 0) {
+                int arrEnd = findMatchingBracket(content, arrStart);
+                List<String> evObjects = splitJsonArray(content.substring(arrStart, arrEnd + 1));
+                for (String evObj : evObjects) {
+                    EvolutionEditData eed = new EvolutionEditData();
+                    eed.fromId = extractJsonInt(evObj, "fromId", -1);
+                    eed.toId = extractJsonInt(evObj, "toId", -1);
+                    if (eed.fromId < 0 || eed.toId < 0) continue;
+                    eed.method = extractJsonString(evObj, "method");
+                    eed.extraInfo = extractJsonInt(evObj, "extraInfo", 0);
+                    parsedEvolutionEdits.add(eed);
                 }
             }
         }
@@ -250,6 +462,13 @@ public class CustomEncounterFile {
                                 tp.resetMoves = true;
                             }
                             tp.level = tpd.level;
+                            if (tpd.heldItem >= 0) {
+                                tp.heldItem = tpd.heldItem;
+                            }
+                            if (tpd.moves != null) {
+                                tp.moves = Arrays.copyOf(tpd.moves, 4);
+                                tp.resetMoves = false;
+                            }
                         }
                         modified.pokemon.add(tp);
                     }
@@ -264,7 +483,15 @@ public class CustomEncounterFile {
 
         return new ParseResult(result, errors, warnings,
                 customStarters, customStatics.isEmpty() ? null : customStatics,
-                customTrainers);
+                customTrainers,
+                parsedTMs.isEmpty() ? null : parsedTMs,
+                parsedMoveTutors.isEmpty() ? null : parsedMoveTutors,
+                parsedTrades.isEmpty() ? null : parsedTrades,
+                parsedShops.isEmpty() ? null : parsedShops,
+                parsedFieldItems.isEmpty() ? null : parsedFieldItems,
+                parsedLearnsets.isEmpty() ? null : parsedLearnsets,
+                parsedPokemonEdits.isEmpty() ? null : parsedPokemonEdits,
+                parsedEvolutionEdits.isEmpty() ? null : parsedEvolutionEdits);
     }
 
     /**
@@ -431,12 +658,52 @@ public class CustomEncounterFile {
         boolean isRandom;
         int level;
         int slotNum;
+        int heldItem = -1;
+        int[] moves;
     }
 
     public static class StaticSlotData {
         public Pokemon pokemon;
         public int level;
         public int romIndex;
+    }
+
+    static class TradeData {
+        int index;
+        int givenPokemonId;
+        int requestedPokemonId;
+        String nickname;
+        String otName;
+        int item = -1;
+    }
+
+    static class ShopData {
+        String name;
+        List<Integer> items;
+    }
+
+    static class LearnsetEntry {
+        int moveId;
+        int level;
+    }
+
+    public static class PokemonEditData {
+        public int id;
+        public String type1;
+        public String type2;
+        public int hp = -1;
+        public int attack = -1;
+        public int defense = -1;
+        public int spatk = -1;
+        public int spdef = -1;
+        public int speed = -1;
+    }
+
+    public static class EvolutionEditData {
+        public int fromId;
+        public int toId;
+        public String method;
+        public int extraInfo;
     }
 
     public static class ParseResult {
@@ -446,16 +713,38 @@ public class CustomEncounterFile {
         public final List<Pokemon> customStarters;
         public final List<StaticSlotData> customStatics;
         public final List<Trainer> customTrainers;
+        public final Map<Integer, Integer> customTMs;
+        public final Map<Integer, Integer> customMoveTutors;
+        public final List<TradeData> customTrades;
+        public final Map<Integer, ShopData> customShops;
+        public final Map<Integer, Integer> customFieldItems;
+        public final Map<Integer, List<LearnsetEntry>> customLearnsets;
+        public final List<PokemonEditData> customPokemonEdits;
+        public final List<EvolutionEditData> customEvolutionEdits;
 
         public ParseResult(List<EncounterSet> encounters, List<String> errors, List<String> warnings,
                            List<Pokemon> customStarters, List<StaticSlotData> customStatics,
-                           List<Trainer> customTrainers) {
+                           List<Trainer> customTrainers,
+                           Map<Integer, Integer> customTMs, Map<Integer, Integer> customMoveTutors,
+                           List<TradeData> customTrades, Map<Integer, ShopData> customShops,
+                           Map<Integer, Integer> customFieldItems,
+                           Map<Integer, List<LearnsetEntry>> customLearnsets,
+                           List<PokemonEditData> customPokemonEdits,
+                           List<EvolutionEditData> customEvolutionEdits) {
             this.encounters = encounters;
             this.errors = errors;
             this.warnings = warnings;
             this.customStarters = customStarters;
             this.customStatics = customStatics;
             this.customTrainers = customTrainers;
+            this.customTMs = customTMs;
+            this.customMoveTutors = customMoveTutors;
+            this.customTrades = customTrades;
+            this.customShops = customShops;
+            this.customFieldItems = customFieldItems;
+            this.customLearnsets = customLearnsets;
+            this.customPokemonEdits = customPokemonEdits;
+            this.customEvolutionEdits = customEvolutionEdits;
         }
 
         public boolean hasErrors() {

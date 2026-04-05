@@ -75,6 +75,22 @@ public class GameDataExporter {
 
             // Starters
             writeStarters(out, romHandler);
+            out.println(",");
+
+            // In-game trades
+            writeTrades(out, romHandler);
+            out.println(",");
+
+            // Shops
+            writeShops(out, romHandler);
+            out.println(",");
+
+            // Field items
+            writeFieldItems(out, romHandler);
+            out.println(",");
+
+            // Move tutors
+            writeMoveTutors(out, romHandler);
 
             out.println();
             out.println("}");
@@ -397,6 +413,97 @@ public class GameDataExporter {
         }
         out.println();
         out.print("  }");
+    }
+
+    private static void writeTrades(PrintWriter out, RomHandler romHandler) {
+        List<IngameTrade> trades = romHandler.getIngameTrades();
+        String[] itemNames = romHandler.getItemNames();
+        out.println("  \"trades\": [");
+        boolean first = true;
+        for (int i = 0; i < trades.size(); i++) {
+            IngameTrade t = trades.get(i);
+            if (!first) out.println(",");
+            first = false;
+            out.print("    { \"index\": " + i
+                    + ", \"givenPokemon\": " + jsonStr(t.givenPokemon != null ? t.givenPokemon.name : null)
+                    + ", \"givenPokemonId\": " + (t.givenPokemon != null ? t.givenPokemon.number : 0)
+                    + ", \"requestedPokemon\": " + jsonStr(t.requestedPokemon != null ? t.requestedPokemon.name : null)
+                    + ", \"requestedPokemonId\": " + (t.requestedPokemon != null ? t.requestedPokemon.number : 0)
+                    + ", \"nickname\": " + jsonStr(t.nickname)
+                    + ", \"otName\": " + jsonStr(t.otName)
+                    + ", \"item\": " + t.item
+                    + (t.item > 0 && t.item < itemNames.length ? ", \"itemName\": " + jsonStr(itemNames[t.item]) : "")
+                    + " }");
+        }
+        out.println();
+        out.print("  ]");
+    }
+
+    private static void writeShops(PrintWriter out, RomHandler romHandler) {
+        out.println("  \"shops\": [");
+        if (romHandler.hasShopRandomization()) {
+            Map<Integer, Shop> shops = romHandler.getShopItems();
+            String[] itemNames = romHandler.getItemNames();
+            boolean first = true;
+            for (Map.Entry<Integer, Shop> entry : shops.entrySet()) {
+                if (!first) out.println(",");
+                first = false;
+                Shop shop = entry.getValue();
+                StringBuilder items = new StringBuilder("[");
+                boolean ifirst = true;
+                for (int itemId : shop.items) {
+                    if (!ifirst) items.append(", ");
+                    ifirst = false;
+                    String itemName = (itemId > 0 && itemId < itemNames.length) ? itemNames[itemId] : "???";
+                    items.append("{ \"id\": ").append(itemId)
+                            .append(", \"name\": ").append(jsonStr(itemName)).append(" }");
+                }
+                items.append("]");
+                out.print("    { \"index\": " + entry.getKey()
+                        + ", \"name\": " + jsonStr(shop.name)
+                        + ", \"isMainGame\": " + shop.isMainGame
+                        + ", \"items\": " + items
+                        + " }");
+            }
+            out.println();
+        }
+        out.print("  ]");
+    }
+
+    private static void writeFieldItems(PrintWriter out, RomHandler romHandler) {
+        List<Integer> fieldItems = romHandler.getRegularFieldItems();
+        String[] itemNames = romHandler.getItemNames();
+        out.println("  \"fieldItems\": [");
+        boolean first = true;
+        for (int i = 0; i < fieldItems.size(); i++) {
+            int itemId = fieldItems.get(i);
+            if (!first) out.println(",");
+            first = false;
+            String itemName = (itemId > 0 && itemId < itemNames.length) ? itemNames[itemId] : "???";
+            out.print("    { \"index\": " + i + ", \"item\": " + itemId + ", \"name\": " + jsonStr(itemName) + " }");
+        }
+        out.println();
+        out.print("  ]");
+    }
+
+    private static void writeMoveTutors(PrintWriter out, RomHandler romHandler) {
+        out.println("  \"moveTutors\": [");
+        if (romHandler.hasMoveTutors()) {
+            List<Integer> mtMoves = romHandler.getMoveTutorMoves();
+            List<Move> allMoves = romHandler.getMoves();
+            boolean first = true;
+            for (int i = 0; i < mtMoves.size(); i++) {
+                if (!first) out.println(",");
+                first = false;
+                int moveId = mtMoves.get(i);
+                String moveName = (moveId > 0 && moveId < allMoves.size() && allMoves.get(moveId) != null)
+                        ? allMoves.get(moveId).name : "???";
+                out.print("    { \"index\": " + i + ", \"move\": " + jsonStr(moveName)
+                        + ", \"moveId\": " + moveId + " }");
+            }
+            out.println();
+        }
+        out.print("  ]");
     }
 
     private static String jsonStr(String s) {
