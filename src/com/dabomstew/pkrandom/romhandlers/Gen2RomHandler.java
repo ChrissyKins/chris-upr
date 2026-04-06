@@ -887,9 +887,23 @@ public class Gen2RomHandler extends AbstractGBCRomHandler {
         // Fishing Data
         offset = romEntry.getValue("FishingWildsOffset");
         int rootOffset = offset;
+        String[] fishingGroupNames = {
+            "Fishing - Shore (Cherrygrove, Olivine, Cianwood)",
+            "Fishing - Ocean (New Bark, Ports, Sea Routes)",
+            "Fishing - Caves (Dark Cave, Union Cave, Mt. Mortar)",
+            "Fishing - Ponds (Violet, Ecruteak, Ilex Forest)",
+            "Fishing - Dragon's Den / Ice Path",
+            "Fishing - Qwilfish Swarm",
+            "Fishing - Remoraid Swarm",
+            "Fishing - Lake of Rage / Fuchsia City",
+            "Fishing - Route 45",
+            "Fishing - Whirl Islands",
+            "Fishing - Route 32 (Qwilfish)",
+            "Fishing - Route 44 (Remoraid)",
+        };
         for (int k = 0; k < Gen2Constants.fishingGroupCount; k++) {
             EncounterSet es = new EncounterSet();
-            es.displayName = "Fishing Group " + (k + 1);
+            es.displayName = k < fishingGroupNames.length ? fishingGroupNames[k] : "Fishing Group " + (k + 1);
             for (int i = 0; i < Gen2Constants.pokesPerFishingGroup; i++) {
                 offset++;
                 int pokeNum = rom[offset++] & 0xFF;
@@ -915,9 +929,22 @@ public class Gen2RomHandler extends AbstractGBCRomHandler {
             areas.add(es);
         }
         if (useTimeOfDay) {
+            String[] tsFishingNames = {
+                "Time-Specific Fishing - Shore",
+                "Time-Specific Fishing - Ocean",
+                "Time-Specific Fishing - Caves",
+                "Time-Specific Fishing - Ponds",
+                "Time-Specific Fishing - Dragon's Den / Ice Path",
+                "Time-Specific Fishing - Qwilfish Swarm",
+                "Time-Specific Fishing - Remoraid Swarm",
+                "Time-Specific Fishing - Lake of Rage / Fuchsia City",
+                "Time-Specific Fishing - Route 45",
+                "Time-Specific Fishing - Whirl Islands",
+                "Time-Specific Fishing - Route 32 (Qwilfish)",
+            };
             for (int k = 0; k < Gen2Constants.timeSpecificFishingGroupCount; k++) {
                 EncounterSet es = new EncounterSet();
-                es.displayName = "Time-Specific Fishing " + (k + 1);
+                es.displayName = k < tsFishingNames.length ? tsFishingNames[k] : "Time-Specific Fishing " + (k + 1);
                 for (int i = 0; i < Gen2Constants.pokesPerTSFishingGroup; i++) {
                     int pokeNum = rom[offset++] & 0xFF;
                     int level = rom[offset++] & 0xFF;
