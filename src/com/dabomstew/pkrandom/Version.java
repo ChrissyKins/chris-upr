@@ -28,8 +28,8 @@ import java.util.HashMap;
 import java.util.Map;
 
 public class Version {
-    public static final int VERSION = 1000; // Chris' Randomiser v1.0.0 (forked from UPR-ZX 4.6.1)
-    public static final String VERSION_STRING = "1.0.0";
+    public static final int VERSION = 1100; // Chris' Randomiser v1.1.0
+    public static final String VERSION_STRING = "1.1.0";
 
     public static final Map<Integer,String> oldVersions = setupVersionsMap();
 
