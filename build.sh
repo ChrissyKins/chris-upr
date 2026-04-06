@@ -1,17 +1,22 @@
 #!/bin/bash
 # Build script for Universal Pokemon Randomizer ZX (custom)
-# Requires JDK 8 (1.8) and IntelliJ IDEA (for form compiler)
+# Requires JDK 8 (1.8) and IntelliJ IDEA (for forms_rt + ASM)
 
 JAVA_HOME="/c/Program Files/Java/jdk1.8.0_202"
 JAR="$JAVA_HOME/bin/jar"
 JAVA="$JAVA_HOME/bin/java"
 
-IDEA_HOME="/c/Program Files/JetBrains/IntelliJ IDEA 2025.3.4"
+IDEA_HOME="/c/Program Files/JetBrains/IntelliJ IDEA 2026.1"
 FORMS_RT="$IDEA_HOME/lib/forms_rt.jar"
-JAVAC2="$IDEA_HOME/plugins/java/lib/javac2.jar"
-ASM_JAR="$IDEA_HOME/lib/module-intellij.libraries.asm.jar"
+ASM_JAR="$IDEA_HOME/lib/intellij.libraries.asm.jar"
 JDOM_JAR="$IDEA_HOME/lib/util-8.jar"
-ANT_DIR="$IDEA_HOME/plugins/gradle/lib/ant"
+JAVA_IMPL="$IDEA_HOME/plugins/java/lib/java-impl.jar"
+ANT_DIR="$IDEA_HOME/plugins/gradle-plugin/lib/ant"
+
+# javac2.jar is no longer bundled with IntelliJ 2026.1+
+# We download it from JetBrains Maven repository and cache it locally
+JAVAC2_CACHE="$HOME/.cache/pkrandom/javac2.jar"
+JAVAC2_URL="https://cache-redirector.jetbrains.com/www.jetbrains.com/intellij-repository/releases/com/jetbrains/intellij/java/java-compiler-ant-tasks/243.21565.208/java-compiler-ant-tasks-243.21565.208.jar"
 
 # Use a temp dir without spaces to avoid javac issues
 BUILD_DIR="$(cygpath -u "$LOCALAPPDATA")/Temp/pkrandom_build"
@@ -34,6 +39,20 @@ if [ ! -f "$FORMS_RT" ]; then
     echo "ERROR: IntelliJ not found at $IDEA_HOME"
     exit 1
 fi
+
+# Download javac2.jar if not cached
+if [ ! -f "$JAVAC2_CACHE" ]; then
+    echo "[0/4] Downloading javac2.jar (one-time)..."
+    mkdir -p "$(dirname "$JAVAC2_CACHE")"
+    curl -fSL -o "$JAVAC2_CACHE" "$JAVAC2_URL"
+    if [ $? -ne 0 ]; then
+        echo "ERROR: Failed to download javac2.jar from $JAVAC2_URL"
+        echo "You can manually download it and place it at: $JAVAC2_CACHE"
+        exit 1
+    fi
+    echo "       Cached at $JAVAC2_CACHE"
+fi
+JAVAC2="$JAVAC2_CACHE"
 
 # Clean previous build
 echo "[1/4] Cleaning previous build..."
@@ -63,6 +82,7 @@ cat > "$BUILD_DIR/build.xml" << ANTEOF
         <pathelement location="$W_FORMS_RT"/>
         <pathelement location="$W_ASM"/>
         <pathelement location="$(cygpath -w "$JDOM_JAR")"/>
+        <pathelement location="$(cygpath -w "$JAVA_IMPL")"/>
     </path>
     <taskdef name="javac2" classname="com.intellij.ant.Javac2" classpathref="javac2.cp"/>
 

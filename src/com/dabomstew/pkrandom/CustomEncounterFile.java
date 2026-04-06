@@ -63,7 +63,7 @@ public class CustomEncounterFile {
                     if (areaName == null) continue;
 
                     boolean isStatic = areaName.startsWith("[STATIC]");
-                    boolean isStarters = areaName.equals("[STATIC] Starters");
+                    boolean isStarters = areaName.equals("[STATIC] Starters") || areaName.equals("New Bark Town Starters");
 
                     int slotsStart = areaObj.indexOf("\"slots\"");
                     if (slotsStart < 0) continue;
@@ -72,7 +72,7 @@ public class CustomEncounterFile {
                     int slotArrEnd = findMatchingBracket(areaObj, slotArrStart);
                     List<String> slotObjects = splitJsonArray(areaObj.substring(slotArrStart, slotArrEnd + 1));
 
-                    if (isStatic) {
+                    if (isStatic || isStarters) {
                         for (String slotObj : slotObjects) {
                             int slotNum = extractJsonInt(slotObj, "slot", 1);
                             int pokeId = extractJsonInt(slotObj, "pokemon", 0);
@@ -395,6 +395,7 @@ public class CustomEncounterFile {
         }
 
         // Apply parsed encounter data to original encounter structure
+        Set<String> matchedJsonAreas = new HashSet<>();
         List<EncounterSet> result = new ArrayList<>();
         for (EncounterSet original : originalEncounters) {
             EncounterSet modified = new EncounterSet();
@@ -405,9 +406,9 @@ public class CustomEncounterFile {
 
             List<SlotData> parsed = findArea(parsedAreas, original.displayName);
             if (parsed == null) {
-                warnings.add("Area not found in JSON: " + original.displayName + " - keeping original");
                 modified.encounters = new ArrayList<>(original.encounters);
             } else {
+                matchedJsonAreas.add(findAreaKey(parsedAreas, original.displayName));
                 for (int i = 0; i < original.encounters.size(); i++) {
                     Encounter enc = new Encounter();
                     Encounter origEnc = original.encounters.get(i);
@@ -425,6 +426,30 @@ public class CustomEncounterFile {
                 }
             }
             result.add(modified);
+        }
+
+        // Error on JSON areas that couldn't match any ROM area
+        for (String jsonArea : parsedAreas.keySet()) {
+            if (!matchedJsonAreas.contains(jsonArea)) {
+                // Morning/Night variants are expected extras when useTimeOfDay is off
+                String upper = jsonArea.toUpperCase();
+                if (upper.endsWith(" (MORNING)") || upper.endsWith(" (NIGHT)")) {
+                    String dayName = jsonArea.substring(0, jsonArea.lastIndexOf('(')) + "(Day)";
+                    if (matchedJsonAreas.contains(dayName) || matchedJsonAreas.contains(dayName.replace("(Day)", "(DAY)"))) {
+                        continue; // Day variant was matched, Morning/Night are just unused extras
+                    }
+                    // Check case-insensitively
+                    boolean dayMatched = false;
+                    for (String matched : matchedJsonAreas) {
+                        if (matched.toUpperCase().equals(upper.substring(0, upper.lastIndexOf('(')) + "(DAY)")) {
+                            dayMatched = true;
+                            break;
+                        }
+                    }
+                    if (dayMatched) continue;
+                }
+                errors.add("JSON area not recognized by ROM: " + jsonArea);
+            }
         }
 
         // Apply parsed trainer data to original trainer structure
@@ -501,23 +526,49 @@ public class CustomEncounterFile {
      * The JSON may have "(Day)" suffixed names while the ROM may not (or vice versa).
      */
     private static List<SlotData> findArea(Map<String, List<SlotData>> parsedAreas, String romName) {
-        // Exact match
-        List<SlotData> result = parsedAreas.get(romName);
+        // Build case-insensitive lookup
+        Map<String, List<SlotData>> upper = new LinkedHashMap<>();
+        for (Map.Entry<String, List<SlotData>> e : parsedAreas.entrySet()) {
+            upper.put(e.getKey().toUpperCase(), e.getValue());
+        }
+        String key = romName.toUpperCase();
+
+        // Exact match (case-insensitive)
+        List<SlotData> result = upper.get(key);
         if (result != null) return result;
 
         // ROM has no suffix (useTimeOfDay=false), JSON has "(Day)" suffix
-        result = parsedAreas.get(romName + " (Day)");
+        result = upper.get(key + " (DAY)");
         if (result != null) return result;
 
         // ROM has suffix (useTimeOfDay=true), JSON doesn't
-        String[] suffixes = {" (Day)", " (Morning)", " (Night)"};
+        String[] suffixes = {" (DAY)", " (MORNING)", " (NIGHT)"};
         for (String suffix : suffixes) {
-            if (romName.endsWith(suffix)) {
-                result = parsedAreas.get(romName.substring(0, romName.length() - suffix.length()));
+            if (key.endsWith(suffix)) {
+                result = upper.get(key.substring(0, key.length() - suffix.length()));
                 if (result != null) return result;
             }
         }
 
+        return null;
+    }
+
+    /**
+     * Returns the actual key in parsedAreas that matched, for tracking which JSON areas were used.
+     */
+    private static String findAreaKey(Map<String, List<SlotData>> parsedAreas, String romName) {
+        String key = romName.toUpperCase();
+        for (String jsonKey : parsedAreas.keySet()) {
+            String jk = jsonKey.toUpperCase();
+            if (jk.equals(key)) return jsonKey;
+            if (jk.equals(key + " (DAY)")) return jsonKey;
+            String[] suffixes = {" (DAY)", " (MORNING)", " (NIGHT)"};
+            for (String suffix : suffixes) {
+                if (key.endsWith(suffix) && jk.equals(key.substring(0, key.length() - suffix.length()))) {
+                    return jsonKey;
+                }
+            }
+        }
         return null;
     }
 
@@ -667,15 +718,17 @@ public class CustomEncounterFile {
      * Checks whether a ROM area name matches one from the custom file, considering time-of-day variants.
      */
     private static boolean areaNameMatches(String romName, String parsedName, Set<String> customAreaNames) {
-        if (romName.equals(parsedName)) return true;
+        String rk = romName.toUpperCase();
+        String pk = parsedName.toUpperCase();
+        if (rk.equals(pk)) return true;
         // ROM has no suffix, JSON has "(Day)"
-        if ((romName + " (Day)").equals(parsedName)) return true;
+        if ((rk + " (DAY)").equals(pk)) return true;
         // ROM has suffix, JSON doesn't
-        String[] suffixes = {" (Day)", " (Morning)", " (Night)"};
+        String[] suffixes = {" (DAY)", " (MORNING)", " (NIGHT)"};
         for (String suffix : suffixes) {
-            if (romName.endsWith(suffix)) {
-                String base = romName.substring(0, romName.length() - suffix.length());
-                if (base.equals(parsedName)) return true;
+            if (rk.endsWith(suffix)) {
+                String base = rk.substring(0, rk.length() - suffix.length());
+                if (base.equals(pk)) return true;
             }
         }
         return false;
@@ -697,13 +750,34 @@ public class CustomEncounterFile {
         for (Trainer current : currentTrainers) {
             Trainer custom = customByIndex.get(current.index);
             if (custom != null) {
-                // Replace pokemon list with custom data
+                // If custom trainer has explicit moves, enable the flag and fill defaults
+                if (hasExplicitMoves(custom)) {
+                    current.setPokemonHaveCustomMoves(true);
+                    for (TrainerPokemon tp : custom.pokemon) {
+                        if (isZeroMoves(tp.moves)) {
+                            tp.resetMoves = true;
+                        }
+                    }
+                }
                 current.pokemon.clear();
                 for (TrainerPokemon tp : custom.pokemon) {
                     current.pokemon.add(tp.copy());
                 }
             }
         }
+    }
+
+    private static boolean hasExplicitMoves(Trainer tr) {
+        for (TrainerPokemon tp : tr.pokemon) {
+            if (!isZeroMoves(tp.moves)) return true;
+        }
+        return false;
+    }
+
+    private static boolean isZeroMoves(int[] moves) {
+        if (moves == null) return true;
+        for (int m : moves) if (m != 0) return false;
+        return true;
     }
 
     private static List<Pokemon> buildValidPokemonList(RomHandler romHandler) {

@@ -1267,9 +1267,18 @@ public class Gen2RomHandler extends AbstractGBCRomHandler {
         // trainer mons.
         Map<Integer, List<MoveLearnt>> movesets = this.getMovesLearnt();
 
+        // Write all trainer data sequentially, updating the pointer table.
+        // Data starts right after the pointer table in the same bank.
+        int dataStart = traineroffset + traineramount * 2;
+        int offs = dataStart;
+        int ptrBank = bankOf(traineroffset);
+        int bankEnd = (ptrBank + 1) * GBConstants.bankSize;
         Iterator<Trainer> allTrainers = trainerData.iterator();
         for (int i = 0; i < traineramount; i++) {
-            int offs = pointers[i];
+            // Update pointer table entry
+            int cpuAddr = (offs % GBConstants.bankSize) + GBConstants.bankSize;
+            writeWord(traineroffset + i * 2, cpuAddr);
+
             int limit = trainerclasslimits[i];
             for (int trnum = 0; trnum < limit; trnum++) {
                 Trainer tr = allTrainers.next();
