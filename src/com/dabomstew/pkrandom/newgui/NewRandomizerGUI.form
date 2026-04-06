@@ -135,6 +135,14 @@
         </properties>
         <border type="none"/>
         <children>
+          <grid id="cc001" binding="chrisCustomsPanel" layout-manager="GridBagLayout">
+            <constraints>
+              <tabbedpane title-resource-bundle="com/dabomstew/pkrandom/newgui/Bundle" title-key="GUI.chrisCustomsPanel.title"/>
+            </constraints>
+            <properties/>
+            <border type="none"/>
+            <children/>
+          </grid>
           <grid id="54bda" layout-manager="GridBagLayout">
             <constraints>
               <tabbedpane title-resource-bundle="com/dabomstew/pkrandom/newgui/Bundle" title-key="GUI.pokemonTraitsPanel.title"/>
@@ -3647,14 +3655,6 @@
                 </constraints>
               </vspacer>
             </children>
-          </grid>
-          <grid id="cc001" binding="chrisCustomsPanel" layout-manager="GridBagLayout">
-            <constraints>
-              <tabbedpane title-resource-bundle="com/dabomstew/pkrandom/newgui/Bundle" title-key="GUI.chrisCustomsPanel.title"/>
-            </constraints>
-            <properties/>
-            <border type="none"/>
-            <children/>
           </grid>
         </children>
       </tabbedpane>

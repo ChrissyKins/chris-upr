@@ -311,7 +311,7 @@ public class NewRandomizerGUI {
     private JLabel wpCustomFileStatusLabel;
     private String customEncounterFilePath = null;
     private JFileChooser customEncounterOpenChooser = new JFileChooser();
-    // customEncounterSaveChooser removed
+    private Set<String> customFileSections = new HashSet<>();
 
     private static JFrame frame;
 
@@ -766,7 +766,7 @@ public class NewRandomizerGUI {
 
         // Import
         gbc.gridx = 0; gbc.gridy = 0; gbc.gridwidth = 1;
-        wpImportCustomFileButton = new JButton("Import Custom File");
+        wpImportCustomFileButton = new JButton("Import Customiser File");
         wpImportCustomFileButton.setEnabled(false);
         wpImportCustomFileButton.setToolTipText("Import a custom encounters/trainers JSON file from the web editor");
         wpImportCustomFileButton.addActionListener(e -> importCustomEncounterFile());
@@ -780,14 +780,18 @@ public class NewRandomizerGUI {
         customSection.add(wpClearCustomFileButton, gbc);
 
         gbc.gridx = 2;
-        JButton editorLinkButton = new JButton("Open Web Editor");
-        editorLinkButton.setToolTipText("Open pokemon.enda.cat to create your custom encounters/trainers file");
-        editorLinkButton.addActionListener(e -> {
-            try {
-                java.awt.Desktop.getDesktop().browse(new java.net.URI("https://pokemon.enda.cat"));
-            } catch (Exception ex) { /* ignore */ }
+        JLabel editorLink = new JLabel("<html><a href=''>Open Web Editor</a></html>");
+        editorLink.setCursor(new java.awt.Cursor(java.awt.Cursor.HAND_CURSOR));
+        editorLink.setToolTipText("Open pokemon.enda.cat to create your custom encounters/trainers file");
+        editorLink.addMouseListener(new java.awt.event.MouseAdapter() {
+            @Override
+            public void mouseClicked(java.awt.event.MouseEvent e) {
+                try {
+                    java.awt.Desktop.getDesktop().browse(new java.net.URI("https://pokemon.enda.cat"));
+                } catch (Exception ex) { /* ignore */ }
+            }
         });
-        customSection.add(editorLinkButton, gbc);
+        customSection.add(editorLink, gbc);
 
         // Status label
         gbc.gridx = 0; gbc.gridy = 1; gbc.gridwidth = 3;
@@ -895,6 +899,22 @@ public class NewRandomizerGUI {
                 wpCustomFileStatusLabel.setForeground(new Color(0, 128, 0));
                 wpClearCustomFileButton.setEnabled(true);
 
+                // Track which sections have custom data
+                customFileSections.clear();
+                if (!result.customAreaNames.isEmpty()) customFileSections.add("encounters");
+                if (!result.customTrainerIndices.isEmpty()) customFileSections.add("trainers");
+                if (result.customStarters != null) customFileSections.add("starters");
+                if (result.customStatics != null) customFileSections.add("statics");
+                if (result.customTMs != null) customFileSections.add("tms");
+                if (result.customMoveTutors != null) customFileSections.add("tutors");
+                if (result.customTrades != null) customFileSections.add("trades");
+                if (result.customShops != null) customFileSections.add("shops");
+                if (result.customFieldItems != null) customFileSections.add("fieldItems");
+                if (result.customLearnsets != null) customFileSections.add("learnsets");
+                if (result.customPokemonEdits != null) customFileSections.add("pokemonEdits");
+                if (result.customEvolutionEdits != null) customFileSections.add("evolutions");
+                updateCustomFileGreyedOut();
+
                 if (result.hasWarnings()) {
                     StringBuilder warnMsg = new StringBuilder("File imported successfully, but with warnings:\n\n");
                     for (String warning : result.warnings) {
@@ -918,9 +938,168 @@ public class NewRandomizerGUI {
 
     private void clearCustomEncounterFile() {
         customEncounterFilePath = null;
-        wpCustomFileStatusLabel.setText("No custom file loaded");
+        wpCustomFileStatusLabel.setText("No custom file loaded - create one in the web editor");
         wpCustomFileStatusLabel.setForeground(Color.GRAY);
         wpClearCustomFileButton.setEnabled(false);
+        customFileSections.clear();
+        updateCustomFileGreyedOut();
+    }
+
+    private void updateCustomFileGreyedOut() {
+        boolean has = !customFileSections.isEmpty();
+        String tip = has ? "Custom file will override these settings for its entries" : null;
+
+        // Wild Pokemon
+        boolean hasEnc = customFileSections.contains("encounters");
+        setEnabledWithTip(wpUnchangedRadioButton, !hasEnc, tip);
+        setEnabledWithTip(wpRandomRadioButton, !hasEnc, tip);
+        setEnabledWithTip(wpArea1To1RadioButton, !hasEnc, tip);
+        setEnabledWithTip(wpGlobal1To1RadioButton, !hasEnc, tip);
+        setEnabledWithTip(wpARNoneRadioButton, !hasEnc, tip);
+        setEnabledWithTip(wpARSimilarStrengthRadioButton, !hasEnc, tip);
+        setEnabledWithTip(wpARCatchEmAllModeRadioButton, !hasEnc, tip);
+        setEnabledWithTip(wpARTypeThemeAreasRadioButton, !hasEnc, tip);
+        setEnabledWithTip(wpDontUseLegendariesCheckBox, !hasEnc, tip);
+        setEnabledWithTip(wpBalanceShakingGrassPokemonCheckBox, !hasEnc, tip);
+        setEnabledWithTip(wpPercentageLevelModifierCheckBox, !hasEnc, tip);
+        setEnabledWithTip(wpPercentageLevelModifierSlider, !hasEnc, tip);
+        setEnabledWithTip(wpAllowAltFormesCheckBox, !hasEnc, tip);
+
+        // Trainers
+        boolean hasTr = customFileSections.contains("trainers");
+        if (tpComboBox != null) setEnabledWithTip(tpComboBox, !hasTr, tip);
+        setEnabledWithTip(tpRivalCarriesStarterCheckBox, !hasTr, tip);
+        setEnabledWithTip(tpSimilarStrengthCheckBox, !hasTr, tip);
+        setEnabledWithTip(tpWeightTypesCheckBox, !hasTr, tip);
+        setEnabledWithTip(tpDontUseLegendariesCheckBox, !hasTr, tip);
+        setEnabledWithTip(tpNoEarlyWonderGuardCheckBox, !hasTr, tip);
+        setEnabledWithTip(tpAllowAlternateFormesCheckBox, !hasTr, tip);
+        setEnabledWithTip(tpSwapMegaEvosCheckBox, !hasTr, tip);
+        setEnabledWithTip(tpDoubleBattleModeCheckBox, !hasTr, tip);
+        setEnabledWithTip(tpRandomShinyTrainerPokemonCheckBox, !hasTr, tip);
+        setEnabledWithTip(tpEliteFourUniquePokemonCheckBox, !hasTr, tip);
+        if (tpEliteFourUniquePokemonSpinner != null) setEnabledWithTip(tpEliteFourUniquePokemonSpinner, !hasTr, tip);
+        setEnabledWithTip(tpBossTrainersCheckBox, !hasTr, tip);
+        setEnabledWithTip(tpImportantTrainersCheckBox, !hasTr, tip);
+        setEnabledWithTip(tpRegularTrainersCheckBox, !hasTr, tip);
+
+        // Starters
+        boolean hasSt = customFileSections.contains("starters");
+        setEnabledWithTip(spUnchangedRadioButton, !hasSt, tip);
+        setEnabledWithTip(spCustomRadioButton, !hasSt, tip);
+        setEnabledWithTip(spRandomCompletelyRadioButton, !hasSt, tip);
+        setEnabledWithTip(spRandomTwoEvosRadioButton, !hasSt, tip);
+        setEnabledWithTip(spComboBox1, !hasSt, tip);
+        setEnabledWithTip(spComboBox2, !hasSt, tip);
+        setEnabledWithTip(spComboBox3, !hasSt, tip);
+        setEnabledWithTip(spAllowAltFormesCheckBox, !hasSt, tip);
+
+        // Statics
+        boolean hasStatic = customFileSections.contains("statics");
+        setEnabledWithTip(stpUnchangedRadioButton, !hasStatic, tip);
+        setEnabledWithTip(stpSwapLegendariesSwapStandardsRadioButton, !hasStatic, tip);
+        setEnabledWithTip(stpRandomCompletelyRadioButton, !hasStatic, tip);
+        setEnabledWithTip(stpRandomSimilarStrengthRadioButton, !hasStatic, tip);
+        setEnabledWithTip(stpLimitMainGameLegendariesCheckBox, !hasStatic, tip);
+        setEnabledWithTip(stpRandomize600BSTCheckBox, !hasStatic, tip);
+        setEnabledWithTip(stpAllowAltFormesCheckBox, !hasStatic, tip);
+        setEnabledWithTip(stpSwapMegaEvosCheckBox, !hasStatic, tip);
+
+        // Trades
+        boolean hasTrades = customFileSections.contains("trades");
+        setEnabledWithTip(igtUnchangedRadioButton, !hasTrades, tip);
+        setEnabledWithTip(igtRandomizeGivenPokemonOnlyRadioButton, !hasTrades, tip);
+        setEnabledWithTip(igtRandomizeBothRequestedGivenRadioButton, !hasTrades, tip);
+        setEnabledWithTip(igtRandomizeNicknamesCheckBox, !hasTrades, tip);
+        setEnabledWithTip(igtRandomizeOTsCheckBox, !hasTrades, tip);
+        setEnabledWithTip(igtRandomizeIVsCheckBox, !hasTrades, tip);
+        setEnabledWithTip(igtRandomizeItemsCheckBox, !hasTrades, tip);
+
+        // TMs
+        boolean hasTMs = customFileSections.contains("tms");
+        setEnabledWithTip(tmUnchangedRadioButton, !hasTMs, tip);
+        setEnabledWithTip(tmRandomRadioButton, !hasTMs, tip);
+        setEnabledWithTip(tmKeepFieldMoveTMsCheckBox, !hasTMs, tip);
+        setEnabledWithTip(tmForceGoodDamagingCheckBox, !hasTMs, tip);
+        setEnabledWithTip(tmForceGoodDamagingSlider, !hasTMs, tip);
+        setEnabledWithTip(tmNoGameBreakingMovesCheckBox, !hasTMs, tip);
+
+        // Move Tutors
+        boolean hasTutors = customFileSections.contains("tutors");
+        setEnabledWithTip(mtUnchangedRadioButton, !hasTutors, tip);
+        setEnabledWithTip(mtRandomRadioButton, !hasTutors, tip);
+        setEnabledWithTip(mtKeepFieldMoveTutorsCheckBox, !hasTutors, tip);
+        setEnabledWithTip(mtForceGoodDamagingCheckBox, !hasTutors, tip);
+        setEnabledWithTip(mtForceGoodDamagingSlider, !hasTutors, tip);
+        setEnabledWithTip(mtNoGameBreakingMovesCheckBox, !hasTutors, tip);
+
+        // Field Items
+        boolean hasFI = customFileSections.contains("fieldItems");
+        setEnabledWithTip(fiUnchangedRadioButton, !hasFI, tip);
+        setEnabledWithTip(fiShuffleRadioButton, !hasFI, tip);
+        setEnabledWithTip(fiRandomRadioButton, !hasFI, tip);
+        setEnabledWithTip(fiRandomEvenDistributionRadioButton, !hasFI, tip);
+        setEnabledWithTip(fiBanBadItemsCheckBox, !hasFI, tip);
+
+        // Shops
+        boolean hasShops = customFileSections.contains("shops");
+        setEnabledWithTip(shUnchangedRadioButton, !hasShops, tip);
+        setEnabledWithTip(shShuffleRadioButton, !hasShops, tip);
+        setEnabledWithTip(shRandomRadioButton, !hasShops, tip);
+        setEnabledWithTip(shBanOverpoweredShopItemsCheckBox, !hasShops, tip);
+        setEnabledWithTip(shBanBadItemsCheckBox, !hasShops, tip);
+        setEnabledWithTip(shBanRegularShopItemsCheckBox, !hasShops, tip);
+        setEnabledWithTip(shBalanceShopItemPricesCheckBox, !hasShops, tip);
+        setEnabledWithTip(shGuaranteeEvolutionItemsCheckBox, !hasShops, tip);
+        setEnabledWithTip(shGuaranteeXItemsCheckBox, !hasShops, tip);
+
+        // Learnsets
+        boolean hasLS = customFileSections.contains("learnsets");
+        setEnabledWithTip(pmsUnchangedRadioButton, !hasLS, tip);
+        setEnabledWithTip(pmsRandomPreferringSameTypeRadioButton, !hasLS, tip);
+        setEnabledWithTip(pmsRandomCompletelyRadioButton, !hasLS, tip);
+        setEnabledWithTip(pmsGuaranteedLevel1MovesCheckBox, !hasLS, tip);
+        setEnabledWithTip(pmsGuaranteedLevel1MovesSlider, !hasLS, tip);
+        setEnabledWithTip(pmsReorderDamagingMovesCheckBox, !hasLS, tip);
+        setEnabledWithTip(pmsNoGameBreakingMovesCheckBox, !hasLS, tip);
+        setEnabledWithTip(pmsForceGoodDamagingCheckBox, !hasLS, tip);
+        setEnabledWithTip(pmsForceGoodDamagingSlider, !hasLS, tip);
+        setEnabledWithTip(pmsEvolutionMovesCheckBox, !hasLS, tip);
+
+        // Pokemon Edits (stats/types)
+        boolean hasPE = customFileSections.contains("pokemonEdits");
+        setEnabledWithTip(pbsUnchangedRadioButton, !hasPE, tip);
+        setEnabledWithTip(pbsShuffleRadioButton, !hasPE, tip);
+        setEnabledWithTip(pbsRandomRadioButton, !hasPE, tip);
+        setEnabledWithTip(pbsFollowEvolutionsCheckBox, !hasPE, tip);
+        setEnabledWithTip(pbsFollowMegaEvosCheckBox, !hasPE, tip);
+        setEnabledWithTip(pbsAssignEvoStatsRandomlyCheckBox, !hasPE, tip);
+        setEnabledWithTip(ptUnchangedRadioButton, !hasPE, tip);
+        setEnabledWithTip(ptRandomFollowEvolutionsRadioButton, !hasPE, tip);
+        setEnabledWithTip(ptRandomCompletelyRadioButton, !hasPE, tip);
+        setEnabledWithTip(ptIsDualTypeCheckBox, !hasPE, tip);
+        setEnabledWithTip(ptFollowMegaEvosCheckBox, !hasPE, tip);
+
+        // Evolutions
+        boolean hasEvo = customFileSections.contains("evolutions");
+        setEnabledWithTip(peUnchangedRadioButton, !hasEvo, tip);
+        setEnabledWithTip(peRandomRadioButton, !hasEvo, tip);
+        setEnabledWithTip(peRandomEveryLevelRadioButton, !hasEvo, tip);
+        setEnabledWithTip(peSimilarStrengthCheckBox, !hasEvo, tip);
+        setEnabledWithTip(peSameTypingCheckBox, !hasEvo, tip);
+        setEnabledWithTip(peLimitEvolutionsToThreeCheckBox, !hasEvo, tip);
+        setEnabledWithTip(peForceChangeCheckBox, !hasEvo, tip);
+        setEnabledWithTip(peAllowAltFormesCheckBox, !hasEvo, tip);
+    }
+
+    private static void setEnabledWithTip(JComponent comp, boolean enabled, String tip) {
+        if (comp == null) return;
+        comp.setEnabled(enabled);
+        if (!enabled && tip != null) {
+            comp.setToolTipText(tip);
+        } else if (enabled) {
+            comp.setToolTipText(null);
+        }
     }
 
     private void loadROM() {
@@ -3104,7 +3283,7 @@ public class NewRandomizerGUI {
 
             // Custom encounters
             wpImportCustomFileButton.setEnabled(true);
-            wpCustomFileStatusLabel.setText("No custom file loaded");
+            wpCustomFileStatusLabel.setText("No custom file loaded - create one in the web editor");
             wpCustomFileStatusLabel.setForeground(Color.GRAY);
             customEncounterFilePath = null;
             wpClearCustomFileButton.setEnabled(false);

@@ -491,7 +491,9 @@ public class CustomEncounterFile {
                 parsedFieldItems.isEmpty() ? null : parsedFieldItems,
                 parsedLearnsets.isEmpty() ? null : parsedLearnsets,
                 parsedPokemonEdits.isEmpty() ? null : parsedPokemonEdits,
-                parsedEvolutionEdits.isEmpty() ? null : parsedEvolutionEdits);
+                parsedEvolutionEdits.isEmpty() ? null : parsedEvolutionEdits,
+                new HashSet<>(parsedAreas.keySet()),
+                new HashSet<>(parsedTrainers.keySet()));
     }
 
     /**
@@ -632,6 +634,78 @@ public class CustomEncounterFile {
         }
     }
 
+    /**
+     * Overlays custom encounter data onto an existing (possibly randomized) encounter list.
+     * Only areas whose names appear in customAreaNames are overwritten; all other areas are untouched.
+     */
+    public static void overlayCustomEncounters(ParseResult parseResult, List<EncounterSet> currentEncounters, Random random) {
+        for (EncounterSet es : currentEncounters) {
+            if (es.displayName == null) continue;
+            // Check if this area has custom data (match using same logic as findArea)
+            boolean hasCustom = false;
+            EncounterSet customEs = null;
+            for (EncounterSet parsed : parseResult.encounters) {
+                if (parsed.displayName != null && areaNameMatches(es.displayName, parsed.displayName, parseResult.customAreaNames)) {
+                    customEs = parsed;
+                    hasCustom = true;
+                    break;
+                }
+            }
+            if (hasCustom && customEs != null) {
+                for (int i = 0; i < es.encounters.size() && i < customEs.encounters.size(); i++) {
+                    Encounter src = customEs.encounters.get(i);
+                    Encounter dst = es.encounters.get(i);
+                    dst.pokemon = src.pokemon;
+                    dst.level = src.level;
+                    dst.maxLevel = src.maxLevel;
+                }
+            }
+        }
+    }
+
+    /**
+     * Checks whether a ROM area name matches one from the custom file, considering time-of-day variants.
+     */
+    private static boolean areaNameMatches(String romName, String parsedName, Set<String> customAreaNames) {
+        if (romName.equals(parsedName)) return true;
+        // ROM has no suffix, JSON has "(Day)"
+        if ((romName + " (Day)").equals(parsedName)) return true;
+        // ROM has suffix, JSON doesn't
+        String[] suffixes = {" (Day)", " (Morning)", " (Night)"};
+        for (String suffix : suffixes) {
+            if (romName.endsWith(suffix)) {
+                String base = romName.substring(0, romName.length() - suffix.length());
+                if (base.equals(parsedName)) return true;
+            }
+        }
+        return false;
+    }
+
+    /**
+     * Overlays custom trainer data onto an existing (possibly randomized) trainer list.
+     * Only trainers whose indices appear in customTrainerIndices are overwritten; all others are untouched.
+     */
+    public static void overlayCustomTrainers(ParseResult parseResult, List<Trainer> currentTrainers, Random random) {
+        if (parseResult.customTrainers == null) return;
+        // Build a lookup of custom trainers by index
+        Map<Integer, Trainer> customByIndex = new LinkedHashMap<>();
+        for (Trainer ct : parseResult.customTrainers) {
+            if (parseResult.customTrainerIndices.contains(ct.index)) {
+                customByIndex.put(ct.index, ct);
+            }
+        }
+        for (Trainer current : currentTrainers) {
+            Trainer custom = customByIndex.get(current.index);
+            if (custom != null) {
+                // Replace pokemon list with custom data
+                current.pokemon.clear();
+                for (TrainerPokemon tp : custom.pokemon) {
+                    current.pokemon.add(tp.copy());
+                }
+            }
+        }
+    }
+
     private static List<Pokemon> buildValidPokemonList(RomHandler romHandler) {
         List<Pokemon> allPokemon = romHandler.getPokemon();
         List<Pokemon> validPokemon = new ArrayList<>();
@@ -721,6 +795,8 @@ public class CustomEncounterFile {
         public final Map<Integer, List<LearnsetEntry>> customLearnsets;
         public final List<PokemonEditData> customPokemonEdits;
         public final List<EvolutionEditData> customEvolutionEdits;
+        public final Set<String> customAreaNames;
+        public final Set<Integer> customTrainerIndices;
 
         public ParseResult(List<EncounterSet> encounters, List<String> errors, List<String> warnings,
                            List<Pokemon> customStarters, List<StaticSlotData> customStatics,
@@ -730,7 +806,8 @@ public class CustomEncounterFile {
                            Map<Integer, Integer> customFieldItems,
                            Map<Integer, List<LearnsetEntry>> customLearnsets,
                            List<PokemonEditData> customPokemonEdits,
-                           List<EvolutionEditData> customEvolutionEdits) {
+                           List<EvolutionEditData> customEvolutionEdits,
+                           Set<String> customAreaNames, Set<Integer> customTrainerIndices) {
             this.encounters = encounters;
             this.errors = errors;
             this.warnings = warnings;
@@ -745,6 +822,8 @@ public class CustomEncounterFile {
             this.customLearnsets = customLearnsets;
             this.customPokemonEdits = customPokemonEdits;
             this.customEvolutionEdits = customEvolutionEdits;
+            this.customAreaNames = customAreaNames;
+            this.customTrainerIndices = customTrainerIndices;
         }
 
         public boolean hasErrors() {

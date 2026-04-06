@@ -587,22 +587,13 @@ public class Randomizer {
         // 4. Modify rivals to carry starters
         // 5. Force Trainer Pokemon to be fully evolved
 
-        // Apply custom trainers from file (overrides normal trainer randomization)
-        if (customParseResult != null && customParseResult.customTrainers != null) {
-            CustomEncounterFile.fillRandomTrainerSlots(customParseResult.customTrainers, romHandler, new Random(seed));
-            romHandler.setTrainers(customParseResult.customTrainers, false);
-            trainersChanged = true;
-            log.println("Custom Trainers applied from file.");
-            log.println();
-        }
-
+        // Step 1: Always run standard trainer modifications first
         if (settings.getAdditionalRegularTrainerPokemon() > 0
                 || settings.getAdditionalImportantTrainerPokemon() > 0
                 || settings.getAdditionalBossTrainerPokemon() > 0) {
             romHandler.addTrainerPokemon(settings);
             trainersChanged = true;
         }
-
 
         if (settings.isDoubleBattleMode()) {
             romHandler.doubleBattleMode();
@@ -649,6 +640,18 @@ public class Randomizer {
                 || settings.isRandomizeHeldItemsForRegularTrainerPokemon()) {
             romHandler.randomizeTrainerHeldItems(settings);
             trainersChanged = true;
+        }
+
+        // Step 2: Overlay custom trainers on top (only trainer indices present in the JSON are overwritten)
+        if (customParseResult != null && customParseResult.customTrainers != null
+                && !customParseResult.customTrainerIndices.isEmpty()) {
+            CustomEncounterFile.fillRandomTrainerSlots(customParseResult.customTrainers, romHandler, new Random(seed));
+            List<Trainer> currentTrainers = romHandler.getTrainers();
+            CustomEncounterFile.overlayCustomTrainers(customParseResult, currentTrainers, new Random(seed));
+            romHandler.setTrainers(currentTrainers, false);
+            trainersChanged = true;
+            log.println("Custom trainers overlaid from file (" + customParseResult.customTrainerIndices.size() + " trainers).");
+            log.println();
         }
 
         List<String> originalTrainerNames = getTrainerNames();
@@ -733,15 +736,43 @@ public class Randomizer {
             romHandler.changeCatchRates(settings);
         }
 
-        // Apply custom encounters from the already-parsed file
-        if (customParseResult != null) {
-            boolean useTimeOfDay = settings.isUseTimeBasedEncounters();
+        // Step 1: Always run standard wild Pokemon randomization first
+        switch (settings.getWildPokemonMod()) {
+            case RANDOM:
+                romHandler.randomEncounters(settings);
+                wildsChanged = true;
+                break;
+            case AREA_MAPPING:
+                romHandler.area1to1Encounters(settings);
+                wildsChanged = true;
+                break;
+            case GLOBAL_MAPPING:
+                romHandler.game1to1Encounters(settings);
+                wildsChanged = true;
+                break;
+            default:
+                if (settings.isWildLevelsModified()) {
+                    romHandler.onlyChangeWildLevels(settings);
+                    wildsChanged = true;
+                }
+                break;
+        }
 
-            // Fill in any RANDOM encounter slots
+        // Step 2: Overlay custom encounters on top (only areas present in the JSON are overwritten)
+        if (customParseResult != null && !customParseResult.customAreaNames.isEmpty()) {
+            boolean useTimeOfDay = settings.isUseTimeBasedEncounters();
+            List<EncounterSet> currentEncounters = romHandler.getEncounters(useTimeOfDay);
+
+            // Fill in any RANDOM encounter slots in the custom data
             CustomEncounterFile.fillRandomSlots(customParseResult.encounters, romHandler, new Random(seed));
 
-            romHandler.setEncounters(useTimeOfDay, customParseResult.encounters);
+            // Overlay only the areas that had custom data
+            CustomEncounterFile.overlayCustomEncounters(customParseResult, currentEncounters, new Random(seed));
+
+            romHandler.setEncounters(useTimeOfDay, currentEncounters);
             wildsChanged = true;
+            log.println("Custom encounters overlaid from file (" + customParseResult.customAreaNames.size() + " areas).");
+            log.println();
 
             // Apply custom starters if specified in the file
             if (customParseResult.customStarters != null) {
@@ -781,29 +812,6 @@ public class Randomizer {
                     }
                 }
                 log.println();
-            }
-        }
-
-        if (customParseResult == null) {
-            switch (settings.getWildPokemonMod()) {
-                case RANDOM:
-                    romHandler.randomEncounters(settings);
-                    wildsChanged = true;
-                    break;
-                case AREA_MAPPING:
-                    romHandler.area1to1Encounters(settings);
-                    wildsChanged = true;
-                    break;
-                case GLOBAL_MAPPING:
-                    romHandler.game1to1Encounters(settings);
-                    wildsChanged = true;
-                    break;
-                default:
-                    if (settings.isWildLevelsModified()) {
-                        romHandler.onlyChangeWildLevels(settings);
-                        wildsChanged = true;
-                    }
-                    break;
             }
         }
 
