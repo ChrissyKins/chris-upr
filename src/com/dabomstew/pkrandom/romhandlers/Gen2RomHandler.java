@@ -286,6 +286,7 @@ public class Gen2RomHandler extends AbstractGBCRomHandler {
     private boolean havePatchedFleeing;
     private String[] itemNames;
     private List<Integer> itemOffs;
+    private List<String> itemMapNames;
     private String[][] mapNames;
     private String[] landmarkNames;
     private boolean isVietCrystal;
@@ -2491,6 +2492,7 @@ public class Gen2RomHandler extends AbstractGBCRomHandler {
 
     private void preprocessMaps() {
         itemOffs = new ArrayList<>();
+        itemMapNames = new ArrayList<>();
 
         int mhOffset = romEntry.getValue("MapHeaders");
         int mapGroupCount = Gen2Constants.mapGroupCount;
@@ -2559,6 +2561,7 @@ public class Gen2RomHandler extends AbstractGBCRomHandler {
                 int spOffset = calculateOffset(ehBank, spPointer);
                 // item is at spOffset+2 (first two bytes are the flag id)
                 itemOffs.add(spOffset + 2);
+                itemMapNames.add(mapNames[mapBank][mapNumber]);
             }
         }
         // now skip past them
@@ -2576,9 +2579,25 @@ public class Gen2RomHandler extends AbstractGBCRomHandler {
                 int pOffset = calculateOffset(ehBank, pPointer);
                 // item is at the pOffset for non-hidden items
                 itemOffs.add(pOffset);
+                itemMapNames.add(mapNames[mapBank][mapNumber]);
             }
         }
 
+    }
+
+    /**
+     * Returns the map/route name for each field item index.
+     */
+    public List<String> getFieldItemLocations() {
+        // Build filtered list matching getRegularFieldItems() — only non-TM allowed items
+        List<String> locations = new ArrayList<>();
+        for (int i = 0; i < itemOffs.size(); i++) {
+            int itemHere = rom[itemOffs.get(i)] & 0xFF;
+            if (Gen2Constants.allowedItems.isAllowed(itemHere) && !(Gen2Constants.allowedItems.isTM(itemHere))) {
+                locations.add(itemMapNames.get(i));
+            }
+        }
+        return locations;
     }
 
     /**

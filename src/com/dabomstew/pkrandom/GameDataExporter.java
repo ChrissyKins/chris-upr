@@ -473,6 +473,13 @@ public class GameDataExporter {
     private static void writeFieldItems(PrintWriter out, RomHandler romHandler) {
         List<Integer> fieldItems = romHandler.getRegularFieldItems();
         String[] itemNames = romHandler.getItemNames();
+
+        // Get location names if available (Gen 2)
+        List<String> locations = null;
+        if (romHandler instanceof Gen2RomHandler) {
+            locations = ((Gen2RomHandler) romHandler).getFieldItemLocations();
+        }
+
         out.println("  \"fieldItems\": [");
         boolean first = true;
         for (int i = 0; i < fieldItems.size(); i++) {
@@ -480,7 +487,9 @@ public class GameDataExporter {
             if (!first) out.println(",");
             first = false;
             String itemName = (itemId > 0 && itemId < itemNames.length) ? itemNames[itemId] : "???";
-            out.print("    { \"index\": " + i + ", \"item\": " + itemId + ", \"name\": " + jsonStr(itemName) + " }");
+            String location = (locations != null && i < locations.size()) ? locations.get(i) : null;
+            out.print("    { \"index\": " + i + ", \"item\": " + itemId + ", \"name\": " + jsonStr(itemName)
+                    + (location != null ? ", \"location\": " + jsonStr(location) : "") + " }");
         }
         out.println();
         out.print("  ]");
