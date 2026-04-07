@@ -2809,7 +2809,6 @@ public class Gen2RomHandler extends AbstractGBCRomHandler {
 
     // --- Trainer Dialogue ---
 
-    private static final int TEXT_FAR_COMMAND = 0x17;
     private static final int SCRIPT_WRITETEXT = 0x4C;  // writetext: shows text, script continues
     private static final int SCRIPT_JUMPTEXT = 0x67;   // jumptext: shows text and ends script
 
@@ -2820,14 +2819,34 @@ public class Gen2RomHandler extends AbstractGBCRomHandler {
      */
     private String readDialogueText(int textScriptOffset) {
         int cmd = rom[textScriptOffset] & 0xFF;
-        if (cmd == TEXT_FAR_COMMAND) {
-            // text_far: bank (1 byte) + address (2 bytes LE)
-            int bank = rom[textScriptOffset + 1] & 0xFF;
-            int addr = readWord(textScriptOffset + 2);
-            int farOffset = calculateOffset(bank, addr);
-            return readVariableLengthString(farOffset, false);
+        if (cmd == 0x00) {
+            // Crystal TX_START: command 0x00 is dual-purpose.
+            // If followed by 0x50 (@), it's text_end.
+            // If followed by a valid bank byte + valid address, it's text_far.
+            // Otherwise, the text follows inline starting at offset+1.
+            int nextByte = rom[textScriptOffset + 1] & 0xFF;
+            if (nextByte == GBConstants.stringTerminator) {
+                return ""; // text_end: 0x00 0x50
+            }
+            // Check if this is text_far (bank + 2-byte address)
+            if (nextByte < 0x80) {
+                int addr = readWord(textScriptOffset + 2);
+                if (addr >= GBConstants.bankSize && addr < GBConstants.bankSize * 2) {
+                    int farOffset = calculateOffset(nextByte, addr);
+                    if (farOffset >= 0 && farOffset < rom.length) {
+                        return readVariableLengthString(farOffset, false);
+                    }
+                }
+            }
+            // Inline text: skip the 0x00 prefix and read in text engine mode
+            // (stops at \e=0x57 or \r=0x58 which are text_end/prompt_end)
+            String text = readVariableLengthString(textScriptOffset + 1, true);
+            if (text.endsWith("\\e") || text.endsWith("\\r")) {
+                text = text.substring(0, text.length() - 2);
+            }
+            return text;
         } else if (cmd == GBConstants.stringTerminator) {
-            // 0x50 = text_end, no text
+            // 0x50 = bare terminator
             return "";
         } else if (cmd < 0x20) {
             // Some other text engine command we can't follow statically
@@ -2871,13 +2890,26 @@ public class Gen2RomHandler extends AbstractGBCRomHandler {
                 int textPtr = readWord(scriptOffset + i + 1);
                 if (textPtr >= GBConstants.bankSize && textPtr < GBConstants.bankSize * 2) {
                     int textScriptOffset = calculateOffset(bank, textPtr);
+                    // Reuse the same logic as storeDialogueOffsets
                     int firstByte = rom[textScriptOffset] & 0xFF;
-                    if (firstByte == TEXT_FAR_COMMAND) {
-                        int farBank = rom[textScriptOffset + 1] & 0xFF;
-                        int farAddr = readWord(textScriptOffset + 2);
-                        int farOffset = calculateOffset(farBank, farAddr);
-                        t.afterTextFarOffset = farOffset;
-                        t.afterTextFarLength = lengthOfStringAt(farOffset, false);
+                    if (firstByte == 0x00 && (rom[textScriptOffset + 1] & 0xFF) != GBConstants.stringTerminator) {
+                        int nb = rom[textScriptOffset + 1] & 0xFF;
+                        int textOff;
+                        if (nb < 0x80) {
+                            int a2 = readWord(textScriptOffset + 2);
+                            if (a2 >= GBConstants.bankSize && a2 < GBConstants.bankSize * 2) {
+                                int fo = calculateOffset(nb, a2);
+                                textOff = (fo >= 0 && fo < rom.length) ? fo : -1;
+                            } else {
+                                textOff = textScriptOffset + 1;
+                            }
+                        } else {
+                            textOff = textScriptOffset + 1;
+                        }
+                        if (textOff >= 0) {
+                            t.afterTextFarOffset = textOff;
+                            t.afterTextFarLength = lengthOfStringAt(textOff, false);
+                        }
                     }
                     return;
                 }
@@ -2996,18 +3028,36 @@ public class Gen2RomHandler extends AbstractGBCRomHandler {
 
     private void storeDialogueOffsets(Trainer t, int textScriptOffset, boolean isSeen) {
         int cmd = rom[textScriptOffset] & 0xFF;
-        if (cmd == TEXT_FAR_COMMAND) {
-            int bank = rom[textScriptOffset + 1] & 0xFF;
+        if (cmd != 0x00) return;
+        int nextByte = rom[textScriptOffset + 1] & 0xFF;
+        if (nextByte == GBConstants.stringTerminator) return;
+
+        int textOffset;
+        // Check for text_far (valid bank + valid address)
+        if (nextByte < 0x80) {
             int addr = readWord(textScriptOffset + 2);
-            int farOffset = calculateOffset(bank, addr);
-            int farLength = lengthOfStringAt(farOffset, false);
-            if (isSeen) {
-                t.seenTextFarOffset = farOffset;
-                t.seenTextFarLength = farLength;
+            if (addr >= GBConstants.bankSize && addr < GBConstants.bankSize * 2) {
+                int farOffset = calculateOffset(nextByte, addr);
+                if (farOffset >= 0 && farOffset < rom.length) {
+                    textOffset = farOffset;
+                } else {
+                    return;
+                }
             } else {
-                t.beatenTextFarOffset = farOffset;
-                t.beatenTextFarLength = farLength;
+                textOffset = textScriptOffset + 1; // inline
             }
+        } else {
+            textOffset = textScriptOffset + 1; // inline
+        }
+
+        boolean isInline = (textOffset == textScriptOffset + 1);
+        int textLength = lengthOfStringAt(textOffset, isInline);
+        if (isSeen) {
+            t.seenTextFarOffset = textOffset;
+            t.seenTextFarLength = textLength;
+        } else {
+            t.beatenTextFarOffset = textOffset;
+            t.beatenTextFarLength = textLength;
         }
     }
 
