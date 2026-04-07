@@ -2934,6 +2934,7 @@ public class Gen2RomHandler extends AbstractGBCRomHandler {
      *   +8    : type byte
      *   +9,+10: after-battle script pointer
      */
+
     public void loadTrainerDialogue(List<Trainer> trainers) {
         Map<Integer, List<Trainer>> byClass = new LinkedHashMap<>();
         for (Trainer t : trainers) {
@@ -2979,8 +2980,16 @@ public class Gen2RomHandler extends AbstractGBCRomHandler {
         int warpCount = rom[ehOffset++] & 0xFF;
         ehOffset += warpCount * 5;
 
-        // skip xy triggers
+        // xy triggers — also scan for trainer battles (cutscene-triggered fights)
         int triggerCount = rom[ehOffset++] & 0xFF;
+        for (int tr = 0; tr < triggerCount; tr++) {
+            int trigOffset = ehOffset + tr * 8;
+            int trigScriptPtr = readWord(trigOffset + 4);
+            if (trigScriptPtr >= GBConstants.bankSize && trigScriptPtr < GBConstants.bankSize * 2) {
+                int trigScriptOff = calculateOffset(ehBank, trigScriptPtr);
+                try { extractScriptDialogue(trigScriptOff, ehBank, byClass); } catch (Exception e) {}
+            }
+        }
         ehOffset += triggerCount * 8;
 
         // skip signposts
@@ -3043,66 +3052,115 @@ public class Gen2RomHandler extends AbstractGBCRomHandler {
      * to extract dialogue for script-triggered trainer battles (gym leaders, etc).
      */
     /**
-     * Scans a map script for the Crystal battle pattern:
-     *   0x4C [pre_lo] [pre_hi]                              ; writetext (before battle)
-     *   0x54                                                 ; closetext
-     *   0x49                                                 ; refreshscreen
-     *   0x64 [win_lo] [win_hi] [loss_lo] [loss_hi]          ; winlosstext
-     *   0x5E [class] [id]                                    ; loadtrainer
-     *   0x5F                                                 ; startbattle
+     * Scans a map script for loadtrainer (0x5E) commands and extracts dialogue
+     * by searching backwards for winlosstext (0x64) and writetext (0x4C).
      *
-     * winlosstext ptr1 = win text (trainer's defeat line when you win)
-     * winlosstext ptr2 = loss text (rarely seen, player blacks out)
-     * The pre-battle "seen" text comes from writetext before winlosstext.
+     * Handles multiple patterns:
+     *   Pattern A: writetext, closetext, refreshscreen, winlosstext, loadtrainer, startbattle
+     *   Pattern B: winlosstext, [extra cmds], loadtrainer, startbattle
+     *   Pattern C: [other setup], loadtrainer, startbattle (no winlosstext nearby)
      */
     private void extractScriptDialogue(int scriptOffset, int bank,
                                         Map<Integer, List<Trainer>> byClass) {
         int scanLimit = Math.min(scriptOffset + 300, rom.length - 10);
-        // Track the most recent writetext pointer as we scan
-        int lastWriteTextPtr = -1;
         for (int i = scriptOffset; i < scanLimit; i++) {
-            int cmd = rom[i] & 0xFF;
-            if (cmd == SCRIPT_WRITETEXT && i + 2 < scanLimit) {
-                int ptr = readWord(i + 1);
-                if (ptr >= GBConstants.bankSize && ptr < GBConstants.bankSize * 2) {
-                    lastWriteTextPtr = ptr;
-                }
-            }
-            if (cmd == SCRIPT_WINLOSSTEXT && i + 7 < scanLimit
-                    && (rom[i + 5] & 0xFF) == SCRIPT_LOADTRAINER) {
-                int winTextPtr = readWord(i + 1);   // trainer's defeat line
-                int trainerClass = rom[i + 6] & 0xFF;
-                int trainerNum = rom[i + 7] & 0xFF;
+            if ((rom[i] & 0xFF) != SCRIPT_LOADTRAINER) continue;
+            int trainerClass = rom[i + 1] & 0xFF;
+            int trainerNum = rom[i + 2] & 0xFF;
 
-                List<Trainer> classTrainers = byClass.get(trainerClass - 1);
-                if (classTrainers != null && trainerNum > 0 && trainerNum <= classTrainers.size()) {
-                    Trainer t = classTrainers.get(trainerNum - 1);
-                    // seenText = pre-battle text from the most recent writetext
-                    if (t.seenText == null && lastWriteTextPtr >= 0) {
-                        int seenOff = calculateOffset(bank, lastWriteTextPtr);
-                        if (seenOff >= 0 && seenOff < rom.length) {
-                            t.seenText = readDialogueText(seenOff);
+            List<Trainer> classTrainers = byClass.get(trainerClass - 1);
+            if (classTrainers == null || trainerNum <= 0 || trainerNum > classTrainers.size()) continue;
+            Trainer t = classTrainers.get(trainerNum - 1);
+            if (t.seenText != null) continue; // already populated
+
+            try {
+                // Search backwards (up to 20 bytes) for winlosstext (0x64)
+                // Validate the first pointer leads to text data
+                int winTextPtr = -1;
+                for (int j = i - 1; j >= Math.max(scriptOffset, i - 20); j--) {
+                    if ((rom[j] & 0xFF) == SCRIPT_WINLOSSTEXT) {
+                        int ptr = readWord(j + 1);
+                        if (ptr >= GBConstants.bankSize && ptr < GBConstants.bankSize * 2) {
+                            int off = calculateOffset(bank, ptr);
+                            if (off >= 0 && off + 1 < rom.length
+                                    && (rom[off] & 0xFF) == 0x00
+                                    && (rom[off + 1] & 0xFF) >= 0x40) {
+                                winTextPtr = ptr;
+                            }
+                        }
+                        break;
+                    }
+                }
+
+                // Search backwards (up to 30 bytes) for most recent writetext (0x4C)
+                // Validate the pointer leads to actual text (byte 0x00 followed by chars >= 0x80)
+                int preTextPtr = -1;
+                for (int j = i - 1; j >= Math.max(scriptOffset, i - 30); j--) {
+                    if ((rom[j] & 0xFF) == SCRIPT_WRITETEXT) {
+                        int ptr = readWord(j + 1);
+                        if (ptr >= GBConstants.bankSize && ptr < GBConstants.bankSize * 2) {
+                            int off = calculateOffset(bank, ptr);
+                            if (off >= 0 && off + 1 < rom.length
+                                    && (rom[off] & 0xFF) == 0x00
+                                    && (rom[off + 1] & 0xFF) >= 0x40) {
+                                preTextPtr = ptr;
+                            }
+                        }
+                        break;
+                    }
+                }
+
+                // seenText from writetext (pre-battle dialogue)
+                if (t.seenText == null && preTextPtr >= 0) {
+                    int seenOff = calculateOffset(bank, preTextPtr);
+                    if (seenOff >= 0 && seenOff < rom.length) {
+                        String text = readDialogueText(seenOff);
+                        if (looksLikeDialogue(text)) {
+                            t.seenText = text;
                             storeDialogueOffsets(t, seenOff, true);
                         }
                     }
-                    // beatenText = winlosstext first pointer (defeat line)
-                    if (t.beatenText == null && winTextPtr != 0) {
-                        int beatenOff = calculateOffset(bank, winTextPtr);
-                        if (beatenOff >= 0 && beatenOff < rom.length) {
-                            t.beatenText = readDialogueText(beatenOff);
+                }
+
+                // beatenText from winlosstext first pointer
+                if (t.beatenText == null && winTextPtr >= 0 && winTextPtr != 0) {
+                    int beatenOff = calculateOffset(bank, winTextPtr);
+                    if (beatenOff >= 0 && beatenOff < rom.length) {
+                        String text = readDialogueText(beatenOff);
+                        if (looksLikeDialogue(text)) {
+                            t.beatenText = text;
                             storeDialogueOffsets(t, beatenOff, false);
                         }
                     }
-                    // After-battle idle: scan past startbattle for writetext
-                    if (t.afterText == null && i + 9 < scanLimit
-                            && (rom[i + 8] & 0xFF) == SCRIPT_STARTBATTLE) {
-                        t.afterText = readAfterBattleText(i + 9, bank);
-                        storeAfterBattleOffsets(t, i + 9, bank);
+                }
+
+                // After-battle idle: scan past startbattle (0x5F) for writetext
+                for (int j = i + 3; j < Math.min(i + 10, scanLimit); j++) {
+                    if ((rom[j] & 0xFF) == SCRIPT_STARTBATTLE) {
+                        t.afterText = readAfterBattleText(j + 1, bank);
+                        storeAfterBattleOffsets(t, j + 1, bank);
+                        break;
                     }
                 }
-                lastWriteTextPtr = -1; // reset after consuming
+            } catch (Exception e) {
+                // Skip trainers with unreadable scripts
             }
         }
+    }
+
+    /** Returns true if the text looks like real dialogue (not garbage data). */
+    private boolean looksLikeDialogue(String text) {
+        if (text == null || text.isEmpty()) return false;
+        // Count \xHH escape sequences (unmapped bytes = likely garbage)
+        int escapes = 0;
+        int total = text.length();
+        for (int i = 0; i < total - 1; i++) {
+            if (text.charAt(i) == '\\' && text.charAt(i + 1) == 'x') {
+                escapes++;
+            }
+        }
+        // Reject if more than 10% of characters are hex escapes
+        return escapes < Math.max(2, total / 10);
     }
 
     private void storeDialogueOffsets(Trainer t, int textScriptOffset, boolean isSeen) {
