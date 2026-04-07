@@ -3065,7 +3065,7 @@ public class Gen2RomHandler extends AbstractGBCRomHandler {
      */
     private void extractScriptDialogue(int scriptOffset, int bank,
                                         Map<Integer, List<Trainer>> byClass) {
-        int scanLimit = Math.min(scriptOffset + 300, rom.length - 10);
+        int scanLimit = Math.min(scriptOffset + 500, rom.length - 10);
         for (int i = scriptOffset; i < scanLimit; i++) {
             if ((rom[i] & 0xFF) != SCRIPT_LOADTRAINER) continue;
             int trainerClass = rom[i + 1] & 0xFF;
@@ -3078,16 +3078,13 @@ public class Gen2RomHandler extends AbstractGBCRomHandler {
 
             try {
                 // Search backwards (up to 20 bytes) for winlosstext (0x64)
-                // Validate the first pointer leads to text data
                 int winTextPtr = -1;
                 for (int j = i - 1; j >= Math.max(scriptOffset, i - 20); j--) {
                     if ((rom[j] & 0xFF) == SCRIPT_WINLOSSTEXT) {
                         int ptr = readWord(j + 1);
                         if (ptr >= GBConstants.bankSize && ptr < GBConstants.bankSize * 2) {
                             int off = calculateOffset(bank, ptr);
-                            if (off >= 0 && off + 1 < rom.length
-                                    && (rom[off] & 0xFF) == 0x00
-                                    && (rom[off + 1] & 0xFF) >= 0x40) {
+                            if (off >= 0 && off + 1 < rom.length) {
                                 winTextPtr = ptr;
                             }
                         }
@@ -3096,16 +3093,14 @@ public class Gen2RomHandler extends AbstractGBCRomHandler {
                 }
 
                 // Search backwards (up to 30 bytes) for most recent writetext (0x4C)
-                // Validate the pointer leads to actual text (byte 0x00 followed by chars >= 0x80)
+                // Validate that the pointer resolves to a location that looks like text
                 int preTextPtr = -1;
                 for (int j = i - 1; j >= Math.max(scriptOffset, i - 30); j--) {
                     if ((rom[j] & 0xFF) == SCRIPT_WRITETEXT) {
                         int ptr = readWord(j + 1);
                         if (ptr >= GBConstants.bankSize && ptr < GBConstants.bankSize * 2) {
                             int off = calculateOffset(bank, ptr);
-                            if (off >= 0 && off + 1 < rom.length
-                                    && (rom[off] & 0xFF) == 0x00
-                                    && (rom[off + 1] & 0xFF) >= 0x40) {
+                            if (off >= 0 && off + 1 < rom.length) {
                                 preTextPtr = ptr;
                             }
                         }
