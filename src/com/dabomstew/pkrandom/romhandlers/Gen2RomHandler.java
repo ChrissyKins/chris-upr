@@ -3027,8 +3027,11 @@ public class Gen2RomHandler extends AbstractGBCRomHandler {
                         t.beatenText = readDialogueText(beatenTextOffset);
                         storeDialogueOffsets(t, seenTextOffset, true);
                         storeDialogueOffsets(t, beatenTextOffset, false);
-                        t.afterText = readAfterBattleText(afterScriptOffset, ehBank);
-                        storeAfterBattleOffsets(t, afterScriptOffset, ehBank);
+                        String after = readAfterBattleText(afterScriptOffset, ehBank);
+                        if (looksLikeDialogue(after)) {
+                            t.afterText = after;
+                            storeAfterBattleOffsets(t, afterScriptOffset, ehBank);
+                        }
                     } catch (Exception e) {
                         // Skip trainers with unreadable text
                     }
@@ -3135,11 +3138,16 @@ public class Gen2RomHandler extends AbstractGBCRomHandler {
                 }
 
                 // After-battle idle: scan past startbattle (0x5F) for writetext
-                for (int j = i + 3; j < Math.min(i + 10, scanLimit); j++) {
-                    if ((rom[j] & 0xFF) == SCRIPT_STARTBATTLE) {
-                        t.afterText = readAfterBattleText(j + 1, bank);
-                        storeAfterBattleOffsets(t, j + 1, bank);
-                        break;
+                if (t.afterText == null) {
+                    for (int j = i + 3; j < Math.min(i + 10, scanLimit); j++) {
+                        if ((rom[j] & 0xFF) == SCRIPT_STARTBATTLE) {
+                            String after = readAfterBattleText(j + 1, bank);
+                            if (looksLikeDialogue(after)) {
+                                t.afterText = after;
+                                storeAfterBattleOffsets(t, j + 1, bank);
+                            }
+                            break;
+                        }
                     }
                 }
             } catch (Exception e) {
