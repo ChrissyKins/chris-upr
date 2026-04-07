@@ -2076,7 +2076,22 @@ public class Gen2RomHandler extends AbstractGBCRomHandler {
 
     @Override
     public void setShopPrices() {
-        // Gen 2 item prices are embedded in game code, not easily editable
+        // Gen 2 item prices are in the ItemAttributes table, but this method
+        // is for the "balanced prices" preset. Custom prices are handled separately.
+    }
+
+    public int getItemPrice(int itemId) {
+        int attrOffset = romEntry.getValue("ItemAttributesOffset");
+        if (attrOffset <= 0 || itemId <= 0) return 0;
+        int offset = attrOffset + (itemId - 1) * 7;
+        return readWord(offset);
+    }
+
+    public void setItemPrice(int itemId, int price) {
+        int attrOffset = romEntry.getValue("ItemAttributesOffset");
+        if (attrOffset <= 0 || itemId <= 0) return;
+        int offset = attrOffset + (itemId - 1) * 7;
+        writeWord(offset, price);
     }
 
     @Override

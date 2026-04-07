@@ -349,6 +349,24 @@ public class CustomEncounterFile {
             }
         }
 
+        // Parse item prices: [{"item": 5, "price": 200}, ...]
+        Map<Integer, Integer> parsedPrices = new LinkedHashMap<>();
+        int prIdx = content.indexOf("\"prices\"");
+        if (prIdx >= 0) {
+            int arrStart = content.indexOf('[', prIdx);
+            if (arrStart >= 0) {
+                int arrEnd = findMatchingBracket(content, arrStart);
+                List<String> prObjects = splitJsonArray(content.substring(arrStart, arrEnd + 1));
+                for (String prObj : prObjects) {
+                    int itemId = extractJsonInt(prObj, "item", -1);
+                    int price = extractJsonInt(prObj, "price", -1);
+                    if (itemId > 0 && price >= 0) {
+                        parsedPrices.put(itemId, price);
+                    }
+                }
+            }
+        }
+
         // Parse Pokemon edits: [{"id": 25, "type1": "ELECTRIC", "type2": null, "hp": 35, "atk": 55, ...}, ...]
         List<PokemonEditData> parsedPokemonEdits = new ArrayList<>();
         int peIdx = content.indexOf("\"pokemonEdits\"");
@@ -514,6 +532,7 @@ public class CustomEncounterFile {
                 parsedTrades.isEmpty() ? null : parsedTrades,
                 parsedShops.isEmpty() ? null : parsedShops,
                 parsedFieldItems.isEmpty() ? null : parsedFieldItems,
+                parsedPrices.isEmpty() ? null : parsedPrices,
                 parsedLearnsets.isEmpty() ? null : parsedLearnsets,
                 parsedPokemonEdits.isEmpty() ? null : parsedPokemonEdits,
                 parsedEvolutionEdits.isEmpty() ? null : parsedEvolutionEdits,
@@ -866,6 +885,7 @@ public class CustomEncounterFile {
         public final List<TradeData> customTrades;
         public final Map<Integer, ShopData> customShops;
         public final Map<Integer, Integer> customFieldItems;
+        public final Map<Integer, Integer> customPrices;
         public final Map<Integer, List<LearnsetEntry>> customLearnsets;
         public final List<PokemonEditData> customPokemonEdits;
         public final List<EvolutionEditData> customEvolutionEdits;
@@ -878,6 +898,7 @@ public class CustomEncounterFile {
                            Map<Integer, Integer> customTMs, Map<Integer, Integer> customMoveTutors,
                            List<TradeData> customTrades, Map<Integer, ShopData> customShops,
                            Map<Integer, Integer> customFieldItems,
+                           Map<Integer, Integer> customPrices,
                            Map<Integer, List<LearnsetEntry>> customLearnsets,
                            List<PokemonEditData> customPokemonEdits,
                            List<EvolutionEditData> customEvolutionEdits,
@@ -893,6 +914,7 @@ public class CustomEncounterFile {
             this.customTrades = customTrades;
             this.customShops = customShops;
             this.customFieldItems = customFieldItems;
+            this.customPrices = customPrices;
             this.customLearnsets = customLearnsets;
             this.customPokemonEdits = customPokemonEdits;
             this.customEvolutionEdits = customEvolutionEdits;

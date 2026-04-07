@@ -146,13 +146,19 @@ public class GameDataExporter {
 
     private static void writeItems(PrintWriter out, RomHandler romHandler) {
         String[] itemNames = romHandler.getItemNames();
+        // Gen 2 can provide item prices
+        Gen2RomHandler gen2 = (romHandler instanceof Gen2RomHandler) ? (Gen2RomHandler) romHandler : null;
         out.println("  \"items\": [");
         boolean first = true;
         for (int i = 1; i < itemNames.length; i++) {
             if (itemNames[i] == null || itemNames[i].isEmpty()) continue;
             if (!first) out.println(",");
             first = false;
-            out.print("    { \"id\": " + i + ", \"name\": " + jsonStr(itemNames[i]) + " }");
+            String priceField = "";
+            if (gen2 != null) {
+                priceField = ", \"price\": " + gen2.getItemPrice(i);
+            }
+            out.print("    { \"id\": " + i + ", \"name\": " + jsonStr(itemNames[i]) + priceField + " }");
         }
         out.println();
         out.print("  ]");

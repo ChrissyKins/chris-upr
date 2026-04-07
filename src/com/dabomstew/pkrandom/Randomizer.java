@@ -33,6 +33,7 @@ import java.util.*;
 
 import com.dabomstew.pkrandom.pokemon.*;
 import com.dabomstew.pkrandom.romhandlers.Gen1RomHandler;
+import com.dabomstew.pkrandom.romhandlers.Gen2RomHandler;
 import com.dabomstew.pkrandom.romhandlers.RomHandler;
 
 // Can randomize a file based on settings. Output varies by seed.
@@ -940,6 +941,16 @@ public class Randomizer {
 
         if (shopsChanged) {
             logShops(log);
+        }
+
+        // Apply custom item prices from file
+        if (customParseResult != null && customParseResult.customPrices != null && romHandler instanceof Gen2RomHandler) {
+            Gen2RomHandler gen2 = (Gen2RomHandler) romHandler;
+            for (Map.Entry<Integer, Integer> entry : customParseResult.customPrices.entrySet()) {
+                gen2.setItemPrice(entry.getKey(), entry.getValue());
+            }
+            log.println("Custom item prices applied from file.");
+            log.println();
         }
 
         // Pickup Items
