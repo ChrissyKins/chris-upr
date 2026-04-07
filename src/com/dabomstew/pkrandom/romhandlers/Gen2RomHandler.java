@@ -2807,6 +2807,243 @@ public class Gen2RomHandler extends AbstractGBCRomHandler {
         }
     }
 
+    // --- Trainer Dialogue ---
+
+    private static final int TEXT_FAR_COMMAND = 0x17;
+    private static final int SCRIPT_WRITETEXT = 0x4C;  // writetext: shows text, script continues
+    private static final int SCRIPT_JUMPTEXT = 0x67;   // jumptext: shows text and ends script
+
+    /**
+     * Reads dialogue text from a text script pointer location.
+     * Handles text_far (0x17) commands that point to text in other banks,
+     * and falls back to inline text reading.
+     */
+    private String readDialogueText(int textScriptOffset) {
+        int cmd = rom[textScriptOffset] & 0xFF;
+        if (cmd == TEXT_FAR_COMMAND) {
+            // text_far: bank (1 byte) + address (2 bytes LE)
+            int bank = rom[textScriptOffset + 1] & 0xFF;
+            int addr = readWord(textScriptOffset + 2);
+            int farOffset = calculateOffset(bank, addr);
+            return readVariableLengthString(farOffset, false);
+        } else if (cmd == GBConstants.stringTerminator) {
+            // 0x50 = text_end, no text
+            return "";
+        } else if (cmd < 0x20) {
+            // Some other text engine command we can't follow statically
+            return null;
+        } else {
+            // Inline text — read in text engine mode (stops at \e or \r)
+            String text = readVariableLengthString(textScriptOffset, true);
+            if (text.endsWith("\\e") || text.endsWith("\\r")) {
+                text = text.substring(0, text.length() - 2);
+            }
+            return text;
+        }
+    }
+
+    /**
+     * Reads text from an after-battle script by scanning for writetext (0x4C)
+     * or jumptext (0x67) commands in the first 20 bytes. These commands are
+     * followed by a 2-byte bank-local text pointer.
+     */
+    private String readAfterBattleText(int scriptOffset, int bank) {
+        for (int i = 0; i < 20; i++) {
+            int cmd = rom[scriptOffset + i] & 0xFF;
+            if (cmd == SCRIPT_WRITETEXT || cmd == SCRIPT_JUMPTEXT) {
+                int textPtr = readWord(scriptOffset + i + 1);
+                if (textPtr >= GBConstants.bankSize && textPtr < GBConstants.bankSize * 2) {
+                    int textScriptOffset = calculateOffset(bank, textPtr);
+                    return readDialogueText(textScriptOffset);
+                }
+            }
+        }
+        return null;
+    }
+
+    /**
+     * Stores write offset info for after-battle text found via script scanning.
+     */
+    private void storeAfterBattleOffsets(Trainer t, int scriptOffset, int bank) {
+        for (int i = 0; i < 20; i++) {
+            int cmd = rom[scriptOffset + i] & 0xFF;
+            if (cmd == SCRIPT_WRITETEXT || cmd == SCRIPT_JUMPTEXT) {
+                int textPtr = readWord(scriptOffset + i + 1);
+                if (textPtr >= GBConstants.bankSize && textPtr < GBConstants.bankSize * 2) {
+                    int textScriptOffset = calculateOffset(bank, textPtr);
+                    int firstByte = rom[textScriptOffset] & 0xFF;
+                    if (firstByte == TEXT_FAR_COMMAND) {
+                        int farBank = rom[textScriptOffset + 1] & 0xFF;
+                        int farAddr = readWord(textScriptOffset + 2);
+                        int farOffset = calculateOffset(farBank, farAddr);
+                        t.afterTextFarOffset = farOffset;
+                        t.afterTextFarLength = lengthOfStringAt(farOffset, false);
+                    }
+                    return;
+                }
+            }
+        }
+    }
+
+    /**
+     * Loads before-battle (seen), end-of-battle (beaten), and after-battle
+     * (idle) dialogue for all trainers by parsing map event headers and
+     * reading trainer header text pointers.
+     *
+     * Trainer header layout (11 bytes):
+     *   +0    : trainer class
+     *   +1    : trainer ID
+     *   +2,+3 : event flag
+     *   +4,+5 : seen text pointer (before battle)
+     *   +6,+7 : beaten text pointer (after defeat)
+     *   +8    : type byte
+     *   +9,+10: after-battle script pointer
+     */
+    public void loadTrainerDialogue(List<Trainer> trainers) {
+        Map<Integer, List<Trainer>> byClass = new LinkedHashMap<>();
+        for (Trainer t : trainers) {
+            byClass.computeIfAbsent(t.trainerclass, k -> new ArrayList<>()).add(t);
+        }
+
+        int mhOffset = romEntry.getValue("MapHeaders");
+        int mapGroupCount = Gen2Constants.mapGroupCount;
+        int mapsInLastGroup = Gen2Constants.mapsInLastGroup;
+        int mhBank = bankOf(mhOffset);
+
+        int[] groupOffsets = new int[mapGroupCount];
+        for (int i = 0; i < mapGroupCount; i++) {
+            groupOffsets[i] = calculateOffset(mhBank, readWord(mhOffset + i * 2));
+        }
+
+        for (int mg = 0; mg < mapGroupCount; mg++) {
+            int offset = groupOffsets[mg];
+            int maxOffset = (mg == mapGroupCount - 1) ? (mhBank + 1) * GBConstants.bankSize : groupOffsets[mg + 1];
+            int map = 0;
+            int maxMap = (mg == mapGroupCount - 1) ? mapsInLastGroup : Integer.MAX_VALUE;
+            while (offset < maxOffset && map < maxMap) {
+                extractDialogueFromMap(offset, byClass);
+                offset += 9;
+                map++;
+            }
+        }
+    }
+
+    private void extractDialogueFromMap(int offset, Map<Integer, List<Trainer>> byClass) {
+        int smhBank = rom[offset] & 0xFF;
+        int smhPointer = readWord(offset + 3);
+        int smhOffset = calculateOffset(smhBank, smhPointer);
+
+        int ehBank = rom[smhOffset + 6] & 0xFF;
+        int ehPointer = readWord(smhOffset + 9);
+        int ehOffset = calculateOffset(ehBank, ehPointer);
+
+        // skip filler
+        ehOffset += 2;
+
+        // skip warps
+        int warpCount = rom[ehOffset++] & 0xFF;
+        ehOffset += warpCount * 5;
+
+        // skip xy triggers
+        int triggerCount = rom[ehOffset++] & 0xFF;
+        ehOffset += triggerCount * 8;
+
+        // skip signposts
+        int signpostCount = rom[ehOffset++] & 0xFF;
+        ehOffset += signpostCount * 5;
+
+        // visible objects/people
+        int peopleCount = rom[ehOffset++] & 0xFF;
+        for (int p = 0; p < peopleCount; p++) {
+            int personOffset = ehOffset + p * 13;
+            int colorFunction = rom[personOffset + 7] & 0xFF;
+            int personType = colorFunction & 0x0F;
+
+            if (personType == 2) {
+                int scriptPointer = readWord(personOffset + 9);
+                int scriptOffset = calculateOffset(ehBank, scriptPointer);
+
+                int trainerClass = rom[scriptOffset] & 0xFF;
+                int trainerNum = rom[scriptOffset + 1] & 0xFF;
+                // +2,+3 = event flag (skip)
+                int seenTextPtr = readWord(scriptOffset + 4);
+                int beatenTextPtr = readWord(scriptOffset + 6);
+                // +8 = type byte (skip)
+                int afterScriptPtr = readWord(scriptOffset + 9);
+
+                int seenTextOffset = calculateOffset(ehBank, seenTextPtr);
+                int beatenTextOffset = calculateOffset(ehBank, beatenTextPtr);
+                int afterScriptOffset = calculateOffset(ehBank, afterScriptPtr);
+
+                List<Trainer> classTrainers = byClass.get(trainerClass - 1);
+                if (classTrainers != null && trainerNum > 0 && trainerNum <= classTrainers.size()) {
+                    Trainer t = classTrainers.get(trainerNum - 1);
+                    try {
+                        t.seenText = readDialogueText(seenTextOffset);
+                        t.beatenText = readDialogueText(beatenTextOffset);
+                        storeDialogueOffsets(t, seenTextOffset, true);
+                        storeDialogueOffsets(t, beatenTextOffset, false);
+                        // After-battle idle text: scan the script for writetext/jumptext
+                        t.afterText = readAfterBattleText(afterScriptOffset, ehBank);
+                        storeAfterBattleOffsets(t, afterScriptOffset, ehBank);
+                    } catch (Exception e) {
+                        // Skip trainers with unreadable text
+                    }
+                }
+            }
+        }
+    }
+
+    private void storeDialogueOffsets(Trainer t, int textScriptOffset, boolean isSeen) {
+        int cmd = rom[textScriptOffset] & 0xFF;
+        if (cmd == TEXT_FAR_COMMAND) {
+            int bank = rom[textScriptOffset + 1] & 0xFF;
+            int addr = readWord(textScriptOffset + 2);
+            int farOffset = calculateOffset(bank, addr);
+            int farLength = lengthOfStringAt(farOffset, false);
+            if (isSeen) {
+                t.seenTextFarOffset = farOffset;
+                t.seenTextFarLength = farLength;
+            } else {
+                t.beatenTextFarOffset = farOffset;
+                t.beatenTextFarLength = farLength;
+            }
+        }
+    }
+
+    /**
+     * Writes modified dialogue text back to the ROM for all trainers
+     * that have text_far offsets stored. Overwrites in place; if the new
+     * text is longer than the original, it is truncated with a warning.
+     */
+    public void writeTrainerDialogue(List<Trainer> trainers) {
+        for (Trainer t : trainers) {
+            writeOneDialogue(t, t.seenText, t.seenTextFarOffset, t.seenTextFarLength, "seen");
+            writeOneDialogue(t, t.beatenText, t.beatenTextFarOffset, t.beatenTextFarLength, "beaten");
+            writeOneDialogue(t, t.afterText, t.afterTextFarOffset, t.afterTextFarLength, "after");
+        }
+    }
+
+    private void writeOneDialogue(Trainer t, String text, int farOffset, int farLength, String which) {
+        if (text == null || farOffset < 0 || farLength < 0) return;
+
+        byte[] translated = translateString(text);
+        if (translated.length <= farLength) {
+            // Fits — overwrite and pad remainder with terminators
+            System.arraycopy(translated, 0, rom, farOffset, translated.length);
+            for (int i = translated.length; i <= farLength; i++) {
+                rom[farOffset + i] = GBConstants.stringTerminator;
+            }
+        } else {
+            // Too long — truncate to fit
+            System.arraycopy(translated, 0, rom, farOffset, farLength);
+            rom[farOffset + farLength] = GBConstants.stringTerminator;
+            System.err.println("Warning: " + which + " text truncated for trainer "
+                    + t.fullDisplayName + " (original: " + farLength + " bytes, new: "
+                    + translated.length + " bytes)");
+        }
+    }
+
     /**
      * Debug export: writes trainer location data as JSON to a file.
      */

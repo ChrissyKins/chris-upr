@@ -648,8 +648,16 @@ public class Randomizer {
                 && !customParseResult.customTrainerIndices.isEmpty()) {
             CustomEncounterFile.fillRandomTrainerSlots(customParseResult.customTrainers, romHandler, new Random(seed));
             List<Trainer> currentTrainers = romHandler.getTrainers();
+            // Load dialogue offsets before overlay so write knows where to put text
+            if (romHandler instanceof Gen2RomHandler) {
+                ((Gen2RomHandler) romHandler).loadTrainerDialogue(currentTrainers);
+            }
             CustomEncounterFile.overlayCustomTrainers(customParseResult, currentTrainers, new Random(seed));
             romHandler.setTrainers(currentTrainers, false);
+            // Write modified dialogue text to ROM (separate from trainer data bank)
+            if (romHandler instanceof Gen2RomHandler) {
+                ((Gen2RomHandler) romHandler).writeTrainerDialogue(currentTrainers);
+            }
             trainersChanged = true;
             log.println("Custom trainers overlaid from file (" + customParseResult.customTrainerIndices.size() + " trainers).");
             log.println();

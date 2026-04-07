@@ -48,6 +48,7 @@ public class CustomEncounterFile {
         List<Pokemon> customStarters = null;
         List<StaticSlotData> customStatics = new ArrayList<>();
         Map<Integer, List<TrainerPokemonData>> parsedTrainers = new LinkedHashMap<>();
+        Map<Integer, String[]> parsedTrainerDialogue = new LinkedHashMap<>(); // index -> [seenText, beatenText]
 
         // Parse encounters array
         int encIdx = content.indexOf("\"encounters\"");
@@ -147,8 +148,15 @@ public class CustomEncounterFile {
                     int index = extractJsonInt(trainerObj, "index", -1);
                     if (index < 0) continue;
 
+                    // Parse dialogue text
+                    String seenText = unescapeJsonString(extractJsonString(trainerObj, "seenText"));
+                    String beatenText = unescapeJsonString(extractJsonString(trainerObj, "beatenText"));
+                    String afterText = unescapeJsonString(extractJsonString(trainerObj, "afterText"));
+                    if (seenText != null || afterText != null) parsedTrainerDialogue.put(index, new String[]{seenText, beatenText, afterText});
+
                     int pokeStart = trainerObj.indexOf("\"pokemon\"");
-                    if (pokeStart < 0) continue;
+                    if (pokeStart < 0 && seenText == null) continue;
+                    if (pokeStart < 0) { parsedTrainers.put(index, new ArrayList<>()); continue; }
                     int pokeArrStart = trainerObj.indexOf('[', pokeStart);
                     if (pokeArrStart < 0) continue;
                     int pokeArrEnd = findMatchingBracket(trainerObj, pokeArrStart);
@@ -488,6 +496,14 @@ public class CustomEncounterFile {
                 modified.forceStarterPosition = orig.forceStarterPosition;
                 modified.requiresUniqueHeldItems = orig.requiresUniqueHeldItems;
 
+                // Apply custom dialogue if present
+                String[] dialogue = parsedTrainerDialogue.get(orig.index);
+                if (dialogue != null) {
+                    if (dialogue[0] != null) modified.seenText = dialogue[0];
+                    if (dialogue[1] != null) modified.beatenText = dialogue[1];
+                    if (dialogue.length > 2 && dialogue[2] != null) modified.afterText = dialogue[2];
+                }
+
                 List<TrainerPokemonData> parsedPokes = parsedTrainers.get(orig.index);
                 if (parsedPokes != null && !parsedPokes.isEmpty()) {
                     for (int i = 0; i < orig.pokemon.size(); i++) {
@@ -537,7 +553,7 @@ public class CustomEncounterFile {
                 parsedPokemonEdits.isEmpty() ? null : parsedPokemonEdits,
                 parsedEvolutionEdits.isEmpty() ? null : parsedEvolutionEdits,
                 new HashSet<>(parsedAreas.keySet()),
-                new HashSet<>(parsedTrainers.keySet()));
+                buildTrainerIndices(parsedTrainers, parsedTrainerDialogue));
     }
 
     /**
@@ -606,11 +622,51 @@ public class CustomEncounterFile {
         if (idx < 0) return null;
         int colon = json.indexOf(':', idx + search.length());
         if (colon < 0) return null;
+        // Skip whitespace after colon to check for null
+        int afterColon = colon + 1;
+        while (afterColon < json.length() && json.charAt(afterColon) == ' ') afterColon++;
+        if (afterColon < json.length() && json.charAt(afterColon) == 'n') return null; // null value
         int qStart = json.indexOf('"', colon + 1);
         if (qStart < 0) return null;
-        int qEnd = json.indexOf('"', qStart + 1);
-        if (qEnd < 0) return null;
+        // Find closing quote, handling escaped quotes
+        int qEnd = qStart + 1;
+        while (qEnd < json.length()) {
+            if (json.charAt(qEnd) == '"' && json.charAt(qEnd - 1) != '\\') break;
+            qEnd++;
+        }
+        if (qEnd >= json.length()) return null;
         return json.substring(qStart + 1, qEnd);
+    }
+
+    /**
+     * Unescapes JSON string escapes (\\  -> \, \\\" -> \") so that the
+     * game's text control codes (\n, \p, \l, \e, \r) are preserved as
+     * literal backslash sequences for translateString().
+     */
+    private static String unescapeJsonString(String s) {
+        if (s == null) return null;
+        StringBuilder sb = new StringBuilder();
+        for (int i = 0; i < s.length(); i++) {
+            if (s.charAt(i) == '\\' && i + 1 < s.length()) {
+                char next = s.charAt(i + 1);
+                if (next == '\\' || next == '"' || next == '/') {
+                    sb.append(next);
+                    i++;
+                } else {
+                    sb.append(s.charAt(i));
+                }
+            } else {
+                sb.append(s.charAt(i));
+            }
+        }
+        return sb.toString();
+    }
+
+    private static Set<Integer> buildTrainerIndices(Map<Integer, List<TrainerPokemonData>> parsedTrainers,
+                                                     Map<Integer, String[]> parsedDialogue) {
+        Set<Integer> indices = new HashSet<>(parsedTrainers.keySet());
+        indices.addAll(parsedDialogue.keySet());
+        return indices;
     }
 
     private static int extractJsonInt(String json, String key, int defaultVal) {
@@ -778,9 +834,21 @@ public class CustomEncounterFile {
                         }
                     }
                 }
-                current.pokemon.clear();
-                for (TrainerPokemon tp : custom.pokemon) {
-                    current.pokemon.add(tp.copy());
+                if (!custom.pokemon.isEmpty()) {
+                    current.pokemon.clear();
+                    for (TrainerPokemon tp : custom.pokemon) {
+                        current.pokemon.add(tp.copy());
+                    }
+                }
+                // Overlay dialogue text if custom trainer has it
+                if (custom.seenText != null) {
+                    current.seenText = custom.seenText;
+                }
+                if (custom.beatenText != null) {
+                    current.beatenText = custom.beatenText;
+                }
+                if (custom.afterText != null) {
+                    current.afterText = custom.afterText;
                 }
             }
         }

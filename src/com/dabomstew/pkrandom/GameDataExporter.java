@@ -179,6 +179,11 @@ public class GameDataExporter {
         List<Move> allMoves = romHandler.getMoves();
         String[] itemNames = romHandler.getItemNames();
 
+        // Load dialogue for Gen 2 trainers
+        if (romHandler instanceof Gen2RomHandler) {
+            ((Gen2RomHandler) romHandler).loadTrainerDialogue(trainers);
+        }
+
         out.println("  \"trainers\": [");
         boolean first = true;
         for (Trainer t : trainers) {
@@ -219,6 +224,9 @@ public class GameDataExporter {
                     + ", \"name\": " + jsonStr(t.name)
                     + ", \"fullName\": " + jsonStr(t.fullDisplayName)
                     + ", \"tag\": " + jsonStr(t.tag)
+                    + ", \"seenText\": " + jsonStr(t.seenText)
+                    + ", \"beatenText\": " + jsonStr(t.beatenText)
+                    + ", \"afterText\": " + jsonStr(t.afterText)
                     + ", \"pokemon\": " + pokes
                     + " }");
         }
