@@ -3018,7 +3018,6 @@ public class Gen2RomHandler extends AbstractGBCRomHandler {
                         t.beatenText = readDialogueText(beatenTextOffset);
                         storeDialogueOffsets(t, seenTextOffset, true);
                         storeDialogueOffsets(t, beatenTextOffset, false);
-                        // After-battle idle text: scan the script for writetext/jumptext
                         t.afterText = readAfterBattleText(afterScriptOffset, ehBank);
                         storeAfterBattleOffsets(t, afterScriptOffset, ehBank);
                     } catch (Exception e) {
