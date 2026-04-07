@@ -2809,8 +2809,11 @@ public class Gen2RomHandler extends AbstractGBCRomHandler {
 
     // --- Trainer Dialogue ---
 
-    private static final int SCRIPT_WRITETEXT = 0x4C;  // writetext: shows text, script continues
-    private static final int SCRIPT_JUMPTEXT = 0x67;   // jumptext: shows text and ends script
+    private static final int SCRIPT_WRITETEXT = 0x4C;   // writetext: shows text, script continues
+    private static final int SCRIPT_JUMPTEXT = 0x67;    // jumptext: shows text and ends script
+    private static final int SCRIPT_WINLOSSTEXT = 0x64;  // winlosstext SeenPtr, BeatenPtr (4 param bytes)
+    private static final int SCRIPT_LOADTRAINER = 0x5E;  // loadtrainer CLASS, ID (2 param bytes)
+    private static final int SCRIPT_STARTBATTLE = 0x5F;  // startbattle (0 params)
 
     /**
      * Reads dialogue text from a text script pointer location.
@@ -3020,6 +3023,66 @@ public class Gen2RomHandler extends AbstractGBCRomHandler {
                         storeAfterBattleOffsets(t, afterScriptOffset, ehBank);
                     } catch (Exception e) {
                         // Skip trainers with unreadable text
+                    }
+                }
+            } else if (personType == 0) {
+                // PERSONTYPE_SCRIPT: scan script for loadtrainer + winlosstext pattern
+                // This catches gym leaders, rival, E4, and other script-triggered battles
+                int scriptPointer = readWord(personOffset + 9);
+                int scriptOffset = calculateOffset(ehBank, scriptPointer);
+                try {
+                    extractScriptDialogue(scriptOffset, ehBank, byClass);
+                } catch (Exception e) {
+                    // Skip scripts with unreadable data
+                }
+            }
+        }
+    }
+
+    /**
+     * Scans a map script for loadtrainer (0x5C) + winlosstext (0x5E) patterns
+     * to extract dialogue for script-triggered trainer battles (gym leaders, etc).
+     */
+    /**
+     * Scans a map script for the Crystal battle pattern:
+     *   0x64 [seen_lo] [seen_hi] [beaten_lo] [beaten_hi]  ; winlosstext
+     *   0x5E [class] [id]                                  ; loadtrainer
+     *   0x5F                                               ; startbattle
+     */
+    private void extractScriptDialogue(int scriptOffset, int bank,
+                                        Map<Integer, List<Trainer>> byClass) {
+        int scanLimit = Math.min(scriptOffset + 300, rom.length - 10);
+        for (int i = scriptOffset; i < scanLimit; i++) {
+            int cmd = rom[i] & 0xFF;
+            if (cmd == SCRIPT_WINLOSSTEXT && i + 7 < scanLimit
+                    && (rom[i + 5] & 0xFF) == SCRIPT_LOADTRAINER) {
+                int seenTextPtr = readWord(i + 1);
+                int beatenTextPtr = readWord(i + 3);
+                int trainerClass = rom[i + 6] & 0xFF;
+                int trainerNum = rom[i + 7] & 0xFF;
+
+                List<Trainer> classTrainers = byClass.get(trainerClass - 1);
+                if (classTrainers != null && trainerNum > 0 && trainerNum <= classTrainers.size()) {
+                    Trainer t = classTrainers.get(trainerNum - 1);
+                    if (t.seenText == null && seenTextPtr != 0) {
+                        int seenOff = calculateOffset(bank, seenTextPtr);
+                        if (seenOff >= 0 && seenOff < rom.length) {
+                            t.seenText = readDialogueText(seenOff);
+                            storeDialogueOffsets(t, seenOff, true);
+                        }
+                    }
+                    if (t.beatenText == null && beatenTextPtr != 0) {
+                        int beatenOff = calculateOffset(bank, beatenTextPtr);
+                        if (beatenOff >= 0 && beatenOff < rom.length) {
+                            t.beatenText = readDialogueText(beatenOff);
+                            storeDialogueOffsets(t, beatenOff, false);
+                        }
+                    }
+                    // After-battle: scan past startbattle (0x5F) for writetext
+                    if (t.afterText == null && i + 9 < scanLimit
+                            && (rom[i + 8] & 0xFF) == SCRIPT_STARTBATTLE) {
+                        t.afterText = readAfterBattleText(i + 9, bank);
+                        storeAfterBattleOffsets(t, i + 9, bank);
                     }
                 }
             }
