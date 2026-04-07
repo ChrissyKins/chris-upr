@@ -2026,30 +2026,25 @@ public class Gen2RomHandler extends AbstractGBCRomHandler {
                 ? Arrays.stream(skipShopsArr).boxed().collect(Collectors.toList())
                 : Collections.emptyList();
 
+        int martCount = romEntry.getValue("MartCount");
+        if (martCount <= 0) return null;
+
         Map<Integer, Shop> shopItemsMap = new TreeMap<>();
-        int index = 0;
-        int ptrOffset = tableOffset;
+        for (int index = 0; index < martCount; index++) {
+            if (skipShops.contains(index)) continue;
 
-        while (true) {
-            int ptr = readWord(ptrOffset);
-            if (ptr == 0xFFFF) break;
-
-            if (!skipShops.contains(index)) {
-                int dataOffset = bankBase + (ptr - 0x4000);
-                int count = rom[dataOffset] & 0xFF;
-                List<Integer> items = new ArrayList<>();
-                for (int i = 0; i < count; i++) {
-                    items.add(rom[dataOffset + 1 + i] & 0xFF);
-                }
-                Shop shop = new Shop();
-                shop.items = items;
-                shop.name = index < shopNames.size() ? shopNames.get(index) : "Shop " + index;
-                shop.isMainGame = mainGameShops.contains(index);
-                shopItemsMap.put(index, shop);
+            int ptr = readWord(tableOffset + index * 2);
+            int dataOffset = bankBase + (ptr - 0x4000);
+            int count = rom[dataOffset] & 0xFF;
+            List<Integer> items = new ArrayList<>();
+            for (int i = 0; i < count; i++) {
+                items.add(rom[dataOffset + 1 + i] & 0xFF);
             }
-
-            ptrOffset += 2;
-            index++;
+            Shop shop = new Shop();
+            shop.items = items;
+            shop.name = index < shopNames.size() ? shopNames.get(index) : "Shop " + index;
+            shop.isMainGame = mainGameShops.contains(index);
+            shopItemsMap.put(index, shop);
         }
 
         return shopItemsMap;
@@ -2062,16 +2057,12 @@ public class Gen2RomHandler extends AbstractGBCRomHandler {
 
         int martBank = romEntry.getValue("MartBank");
         int bankBase = martBank * 0x4000;
+        int martCount = romEntry.getValue("MartCount");
 
-        int index = 0;
-        int ptrOffset = tableOffset;
-
-        while (true) {
-            int ptr = readWord(ptrOffset);
-            if (ptr == 0xFFFF) break;
-
+        for (int index = 0; index < martCount; index++) {
             Shop shop = shopItems.get(index);
             if (shop != null && shop.items != null) {
+                int ptr = readWord(tableOffset + index * 2);
                 int dataOffset = bankBase + (ptr - 0x4000);
                 int originalCount = rom[dataOffset] & 0xFF;
                 int newCount = Math.min(shop.items.size(), originalCount);
@@ -2080,9 +2071,6 @@ public class Gen2RomHandler extends AbstractGBCRomHandler {
                     rom[dataOffset + 1 + i] = (byte) (shop.items.get(i) & 0xFF);
                 }
             }
-
-            ptrOffset += 2;
-            index++;
         }
     }
 
