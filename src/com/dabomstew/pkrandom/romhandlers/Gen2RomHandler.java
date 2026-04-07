@@ -3045,46 +3045,63 @@ public class Gen2RomHandler extends AbstractGBCRomHandler {
      */
     /**
      * Scans a map script for the Crystal battle pattern:
-     *   0x64 [seen_lo] [seen_hi] [beaten_lo] [beaten_hi]  ; winlosstext
-     *   0x5E [class] [id]                                  ; loadtrainer
-     *   0x5F                                               ; startbattle
+     *   0x4C [pre_lo] [pre_hi]                              ; writetext (before battle)
+     *   0x54                                                 ; closetext
+     *   0x49                                                 ; refreshscreen
+     *   0x64 [win_lo] [win_hi] [loss_lo] [loss_hi]          ; winlosstext
+     *   0x5E [class] [id]                                    ; loadtrainer
+     *   0x5F                                                 ; startbattle
+     *
+     * winlosstext ptr1 = win text (trainer's defeat line when you win)
+     * winlosstext ptr2 = loss text (rarely seen, player blacks out)
+     * The pre-battle "seen" text comes from writetext before winlosstext.
      */
     private void extractScriptDialogue(int scriptOffset, int bank,
                                         Map<Integer, List<Trainer>> byClass) {
         int scanLimit = Math.min(scriptOffset + 300, rom.length - 10);
+        // Track the most recent writetext pointer as we scan
+        int lastWriteTextPtr = -1;
         for (int i = scriptOffset; i < scanLimit; i++) {
             int cmd = rom[i] & 0xFF;
+            if (cmd == SCRIPT_WRITETEXT && i + 2 < scanLimit) {
+                int ptr = readWord(i + 1);
+                if (ptr >= GBConstants.bankSize && ptr < GBConstants.bankSize * 2) {
+                    lastWriteTextPtr = ptr;
+                }
+            }
             if (cmd == SCRIPT_WINLOSSTEXT && i + 7 < scanLimit
                     && (rom[i + 5] & 0xFF) == SCRIPT_LOADTRAINER) {
-                int seenTextPtr = readWord(i + 1);
-                int beatenTextPtr = readWord(i + 3);
+                int winTextPtr = readWord(i + 1);   // trainer's defeat line
                 int trainerClass = rom[i + 6] & 0xFF;
                 int trainerNum = rom[i + 7] & 0xFF;
 
                 List<Trainer> classTrainers = byClass.get(trainerClass - 1);
                 if (classTrainers != null && trainerNum > 0 && trainerNum <= classTrainers.size()) {
                     Trainer t = classTrainers.get(trainerNum - 1);
-                    if (t.seenText == null && seenTextPtr != 0) {
-                        int seenOff = calculateOffset(bank, seenTextPtr);
+                    // seenText = pre-battle text from the most recent writetext
+                    if (t.seenText == null && lastWriteTextPtr >= 0) {
+                        int seenOff = calculateOffset(bank, lastWriteTextPtr);
                         if (seenOff >= 0 && seenOff < rom.length) {
                             t.seenText = readDialogueText(seenOff);
                             storeDialogueOffsets(t, seenOff, true);
                         }
                     }
-                    if (t.beatenText == null && beatenTextPtr != 0) {
-                        int beatenOff = calculateOffset(bank, beatenTextPtr);
+                    // beatenText = winlosstext first pointer (defeat line)
+                    if (t.beatenText == null && winTextPtr != 0) {
+                        int beatenOff = calculateOffset(bank, winTextPtr);
                         if (beatenOff >= 0 && beatenOff < rom.length) {
                             t.beatenText = readDialogueText(beatenOff);
                             storeDialogueOffsets(t, beatenOff, false);
                         }
                     }
-                    // After-battle: scan past startbattle (0x5F) for writetext
+                    // After-battle idle: scan past startbattle for writetext
                     if (t.afterText == null && i + 9 < scanLimit
                             && (rom[i + 8] & 0xFF) == SCRIPT_STARTBATTLE) {
                         t.afterText = readAfterBattleText(i + 9, bank);
                         storeAfterBattleOffsets(t, i + 9, bank);
                     }
                 }
+                lastWriteTextPtr = -1; // reset after consuming
             }
         }
     }
