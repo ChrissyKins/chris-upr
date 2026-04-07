@@ -33,6 +33,7 @@ import java.io.PrintStream;
 import java.util.*;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
+import java.util.stream.Collectors;
 
 import com.dabomstew.pkrandom.*;
 import com.dabomstew.pkrandom.constants.*;
@@ -2004,22 +2005,90 @@ public class Gen2RomHandler extends AbstractGBCRomHandler {
 
     @Override
     public boolean hasShopRandomization() {
-        return false;
+        return romEntry.getValue("MartTableOffset") > 0;
     }
 
     @Override
     public Map<Integer, Shop> getShopItems() {
-        return null; // Not implemented
+        int tableOffset = romEntry.getValue("MartTableOffset");
+        if (tableOffset <= 0) return null;
+
+        int martBank = romEntry.getValue("MartBank");
+        int bankBase = martBank * 0x4000;
+
+        List<String> shopNames = Gen2Constants.getShopNames();
+        int[] mainGameShopsArr = romEntry.arrayEntries.get("MainGameShops");
+        int[] skipShopsArr = romEntry.arrayEntries.get("SkipShops");
+        List<Integer> mainGameShops = mainGameShopsArr != null
+                ? Arrays.stream(mainGameShopsArr).boxed().collect(Collectors.toList())
+                : Collections.emptyList();
+        List<Integer> skipShops = skipShopsArr != null
+                ? Arrays.stream(skipShopsArr).boxed().collect(Collectors.toList())
+                : Collections.emptyList();
+
+        Map<Integer, Shop> shopItemsMap = new TreeMap<>();
+        int index = 0;
+        int ptrOffset = tableOffset;
+
+        while (true) {
+            int ptr = readWord(ptrOffset);
+            if (ptr == 0xFFFF) break;
+
+            if (!skipShops.contains(index)) {
+                int dataOffset = bankBase + (ptr - 0x4000);
+                int count = rom[dataOffset] & 0xFF;
+                List<Integer> items = new ArrayList<>();
+                for (int i = 0; i < count; i++) {
+                    items.add(rom[dataOffset + 1 + i] & 0xFF);
+                }
+                Shop shop = new Shop();
+                shop.items = items;
+                shop.name = index < shopNames.size() ? shopNames.get(index) : "Shop " + index;
+                shop.isMainGame = mainGameShops.contains(index);
+                shopItemsMap.put(index, shop);
+            }
+
+            ptrOffset += 2;
+            index++;
+        }
+
+        return shopItemsMap;
     }
 
     @Override
     public void setShopItems(Map<Integer, Shop> shopItems) {
-        // Not implemented
+        int tableOffset = romEntry.getValue("MartTableOffset");
+        if (tableOffset <= 0) return;
+
+        int martBank = romEntry.getValue("MartBank");
+        int bankBase = martBank * 0x4000;
+
+        int index = 0;
+        int ptrOffset = tableOffset;
+
+        while (true) {
+            int ptr = readWord(ptrOffset);
+            if (ptr == 0xFFFF) break;
+
+            Shop shop = shopItems.get(index);
+            if (shop != null && shop.items != null) {
+                int dataOffset = bankBase + (ptr - 0x4000);
+                int originalCount = rom[dataOffset] & 0xFF;
+                int newCount = Math.min(shop.items.size(), originalCount);
+                rom[dataOffset] = (byte) newCount;
+                for (int i = 0; i < newCount; i++) {
+                    rom[dataOffset + 1 + i] = (byte) (shop.items.get(i) & 0xFF);
+                }
+            }
+
+            ptrOffset += 2;
+            index++;
+        }
     }
 
     @Override
     public void setShopPrices() {
-        // Not implemented
+        // Gen 2 item prices are embedded in game code, not easily editable
     }
 
     @Override
@@ -2467,12 +2536,12 @@ public class Gen2RomHandler extends AbstractGBCRomHandler {
 
     @Override
     public List<Integer> getRegularShopItems() {
-        return null; // Not implemented
+        return Gen2Constants.regularShopItems;
     }
 
     @Override
     public List<Integer> getOPShopItems() {
-        return null; // Not implemented
+        return Gen2Constants.opShopItems;
     }
 
     private void loadItemNames() {

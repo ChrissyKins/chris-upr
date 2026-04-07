@@ -24,6 +24,7 @@ package com.dabomstew.pkrandom.constants;
 /*--  along with this program. If not, see <http://www.gnu.org/licenses/>.  --*/
 /*----------------------------------------------------------------------------*/
 
+import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.Collections;
 import java.util.List;
@@ -192,8 +193,13 @@ public class Gen2Constants {
 
     public static ItemList nonBadItems;
 
+    public static List<Integer> regularShopItems;
+
+    public static List<Integer> opShopItems;
+
     static {
         setupAllowedItems();
+        setupShopItems();
     }
 
     private static void setupAllowedItems() {
@@ -229,6 +235,78 @@ public class Gen2Constants {
         nonBadItems.banRange(Gen2Items.ylwApricorn, 2);
         nonBadItems.banRange(Gen2Items.normalBox, 2);
         nonBadItems.banRange(Gen2Items.surfMail, 9);
+    }
+
+    private static void setupShopItems() {
+        regularShopItems = new ArrayList<>();
+        regularShopItems.add(Gen2Items.pokeBall);
+        regularShopItems.add(Gen2Items.greatBall);
+        regularShopItems.add(Gen2Items.ultraBall);
+        regularShopItems.add(Gen2Items.potion);
+        regularShopItems.add(Gen2Items.superPotion);
+        regularShopItems.add(Gen2Items.hyperPotion);
+        regularShopItems.add(Gen2Items.maxPotion);
+        regularShopItems.add(Gen2Items.fullRestore);
+        regularShopItems.add(Gen2Items.antidote);
+        regularShopItems.add(Gen2Items.burnHeal);
+        regularShopItems.add(Gen2Items.iceHeal);
+        regularShopItems.add(Gen2Items.awakening);
+        regularShopItems.add(Gen2Items.parlyzHeal);
+        regularShopItems.add(Gen2Items.fullHeal);
+        regularShopItems.add(Gen2Items.revive);
+        regularShopItems.add(Gen2Items.repel);
+        regularShopItems.add(Gen2Items.superRepel);
+        regularShopItems.add(Gen2Items.maxRepel);
+        regularShopItems.add(Gen2Items.escapeRope);
+
+        opShopItems = new ArrayList<>();
+        opShopItems.add(Gen2Items.rareCandy);
+        opShopItems.add(Gen2Items.tinyMushroom);
+        opShopItems.add(Gen2Items.bigMushroom);
+        opShopItems.add(Gen2Items.pearl);
+        opShopItems.add(Gen2Items.bigPearl);
+        opShopItems.add(Gen2Items.nugget);
+        opShopItems.add(Gen2Items.luckyEgg);
+        opShopItems.add(Gen2Items.stardust);
+        opShopItems.add(Gen2Items.starPiece);
+    }
+
+    public static List<String> getShopNames() {
+        return Arrays.asList(
+                "Cherrygrove City",
+                "Violet City",
+                "Azalea Town",
+                "Cianwood City",
+                "Goldenrod Dept. Store 2F",
+                "Blackthorn City",
+                "Pewter City",
+                "Cerulean City",
+                "Lavender Town",
+                "Vermilion City",
+                "Celadon Dept. Store 2F",
+                "Celadon Dept. Store 3F",
+                "Celadon Dept. Store 4F",
+                "Celadon Dept. Store 5F (TMs 1)",
+                "Celadon Dept. Store 5F (TMs 2)",
+                "Celadon Dept. Store 5F (TMs 3)",
+                "Celadon Dept. Store 5F (TMs 4)",
+                "Fuchsia City",
+                "Indigo Plateau",
+                "Saffron City",
+                "Mahogany Town (Before Rockets)",
+                "Goldenrod Dept. Store 5F (TMs)",
+                "Mt. Moon Square",
+                "Mahogany Town (After Rockets)",
+                "Lake of Rage",
+                "Ecruteak City",
+                "Olivine City",
+                "Goldenrod Dept. Store 6F (Sale 1)",
+                "Goldenrod Dept. Store 6F (Sale 2)",
+                "Goldenrod Dept. Store 6F (Sale 3)",
+                "Goldenrod Dept. Store 6F (Sale 4)",
+                "Goldenrod Pharmacy",
+                "Default Mart"
+        );
     }
 
     public static void universalTrainerTags(List<Trainer> allTrainers) {
