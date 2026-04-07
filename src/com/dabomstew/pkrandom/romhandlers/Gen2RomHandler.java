@@ -3074,9 +3074,11 @@ public class Gen2RomHandler extends AbstractGBCRomHandler {
             List<Trainer> classTrainers = byClass.get(trainerClass - 1);
             if (classTrainers == null || trainerNum <= 0 || trainerNum > classTrainers.size()) continue;
             Trainer t = classTrainers.get(trainerNum - 1);
-            if (t.seenText != null) continue; // already populated
 
             try {
+                if (t.seenText != null && t.beatenText != null) {
+                    // seenText/beatenText already populated — skip to idle text only
+                } else {
                 // Search backwards (up to 20 bytes) for winlosstext (0x64)
                 int winTextPtr = -1;
                 for (int j = i - 1; j >= Math.max(scriptOffset, i - 20); j--) {
@@ -3131,15 +3133,26 @@ public class Gen2RomHandler extends AbstractGBCRomHandler {
                         }
                     }
                 }
+                } // end else (seenText/beatenText)
 
-                // After-battle idle: scan past startbattle (0x5F) for writetext
-                if (t.afterText == null) {
-                    for (int j = i + 3; j < Math.min(i + 10, scanLimit); j++) {
-                        if ((rom[j] & 0xFF) == SCRIPT_STARTBATTLE) {
-                            String after = readAfterBattleText(j + 1, bank);
-                            if (looksLikeDialogue(after)) {
-                                t.afterText = after;
-                                storeAfterBattleOffsets(t, j + 1, bank);
+                // Idle text: look for "already beaten" branch at script start.
+                // Pattern: checkflag (0x31) [2b] iftrue (0x09) [target_lo] [target_hi]
+                // The jump target contains the idle text via writetext/jumptext.
+                // Idle text: overwrite any badge-giving text with real idle dialogue
+                {
+                    for (int j = scriptOffset; j < Math.min(scriptOffset + 20, scanLimit); j++) {
+                        if ((rom[j] & 0xFF) == 0x31 && j + 5 < scanLimit
+                                && (rom[j + 3] & 0xFF) == 0x09) {
+                            int jumpTarget = readWord(j + 4);
+                            if (jumpTarget >= GBConstants.bankSize && jumpTarget < GBConstants.bankSize * 2) {
+                                int idleOff = calculateOffset(bank, jumpTarget);
+                                if (idleOff >= 0 && idleOff < rom.length) {
+                                    String idle = readAfterBattleText(idleOff, bank);
+                                    if (looksLikeDialogue(idle)) {
+                                        t.afterText = idle;
+                                        storeAfterBattleOffsets(t, idleOff, bank);
+                                    }
+                                }
                             }
                             break;
                         }
