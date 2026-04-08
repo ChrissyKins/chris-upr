@@ -50,6 +50,7 @@ public class CustomEncounterFile {
         Map<Integer, List<TrainerPokemonData>> parsedTrainers = new LinkedHashMap<>();
         Map<Integer, String[]> parsedTrainerDialogue = new LinkedHashMap<>(); // index -> [seenText, beatenText]
         Map<Integer, String> parsedTrainerNames = new LinkedHashMap<>(); // index -> new name
+        Map<Integer, String> parsedClassNames = new LinkedHashMap<>(); // classId -> new class name
 
         // Parse encounters array
         int encIdx = content.indexOf("\"encounters\"");
@@ -131,6 +132,23 @@ public class CustomEncounterFile {
                             slots.add(sd);
                         }
                         parsedAreas.put(areaName, slots);
+                    }
+                }
+            }
+        }
+
+        // Parse class names array
+        int cnIdx = content.indexOf("\"classNames\"");
+        if (cnIdx >= 0) {
+            int arrStart = content.indexOf('[', cnIdx);
+            if (arrStart >= 0) {
+                int arrEnd = findMatchingBracket(content, arrStart);
+                String cnArr = content.substring(arrStart, arrEnd + 1);
+                for (String cnObj : splitJsonArray(cnArr)) {
+                    int classId = extractJsonInt(cnObj, "classId", -1);
+                    String className = extractJsonString(cnObj, "name");
+                    if (classId >= 0 && className != null) {
+                        parsedClassNames.put(classId, className);
                     }
                 }
             }
@@ -561,7 +579,8 @@ public class CustomEncounterFile {
                 parsedPokemonEdits.isEmpty() ? null : parsedPokemonEdits,
                 parsedEvolutionEdits.isEmpty() ? null : parsedEvolutionEdits,
                 new HashSet<>(parsedAreas.keySet()),
-                buildTrainerIndices(parsedTrainers, parsedTrainerDialogue));
+                buildTrainerIndices(parsedTrainers, parsedTrainerDialogue),
+                parsedClassNames);
     }
 
     /**
@@ -967,6 +986,7 @@ public class CustomEncounterFile {
         public final List<EvolutionEditData> customEvolutionEdits;
         public final Set<String> customAreaNames;
         public final Set<Integer> customTrainerIndices;
+        public final Map<Integer, String> customClassNames;
 
         public ParseResult(List<EncounterSet> encounters, List<String> errors, List<String> warnings,
                            List<Pokemon> customStarters, List<StaticSlotData> customStatics,
@@ -978,7 +998,8 @@ public class CustomEncounterFile {
                            Map<Integer, List<LearnsetEntry>> customLearnsets,
                            List<PokemonEditData> customPokemonEdits,
                            List<EvolutionEditData> customEvolutionEdits,
-                           Set<String> customAreaNames, Set<Integer> customTrainerIndices) {
+                           Set<String> customAreaNames, Set<Integer> customTrainerIndices,
+                           Map<Integer, String> customClassNames) {
             this.encounters = encounters;
             this.errors = errors;
             this.warnings = warnings;
@@ -996,6 +1017,7 @@ public class CustomEncounterFile {
             this.customEvolutionEdits = customEvolutionEdits;
             this.customAreaNames = customAreaNames;
             this.customTrainerIndices = customTrainerIndices;
+            this.customClassNames = customClassNames;
         }
 
         public boolean hasErrors() {

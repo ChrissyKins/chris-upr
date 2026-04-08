@@ -654,6 +654,17 @@ public class Randomizer {
             }
             CustomEncounterFile.overlayCustomTrainers(customParseResult, currentTrainers, new Random(seed));
             romHandler.setTrainers(currentTrainers, false);
+            // Apply custom class names
+            if (customParseResult.customClassNames != null && !customParseResult.customClassNames.isEmpty()) {
+                List<String> classNames = romHandler.getTrainerClassNames();
+                for (Map.Entry<Integer, String> entry : customParseResult.customClassNames.entrySet()) {
+                    int classId = entry.getKey();
+                    if (classId >= 0 && classId < classNames.size()) {
+                        classNames.set(classId, entry.getValue());
+                    }
+                }
+                romHandler.setTrainerClassNames(classNames);
+            }
             // Write modified dialogue text to ROM (separate from trainer data bank)
             if (romHandler instanceof Gen2RomHandler) {
                 ((Gen2RomHandler) romHandler).writeTrainerDialogue(currentTrainers);
