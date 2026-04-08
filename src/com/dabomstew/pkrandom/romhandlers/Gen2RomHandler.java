@@ -2287,6 +2287,31 @@ public class Gen2RomHandler extends AbstractGBCRomHandler {
         return true;
     }
 
+    /**
+     * Swaps trainer class battle sprites. Each entry in the map is
+     * classId -> spriteSourceClassId (copy sprite pointer from source to target).
+     */
+    public void swapTrainerClassSprites(Map<Integer, Integer> spriteSwaps) {
+        if (!romEntry.entries.containsKey("TrainerPicPointers")) return;
+        int tableOffset = romEntry.getValue("TrainerPicPointers");
+        int classCount = romEntry.getValue("TrainerClassAmount");
+
+        // Read all original 3-byte entries (bank + 2-byte pointer)
+        byte[][] origEntries = new byte[classCount][3];
+        for (int i = 0; i < classCount; i++) {
+            System.arraycopy(rom, tableOffset + i * 3, origEntries[i], 0, 3);
+        }
+
+        // Apply swaps
+        for (Map.Entry<Integer, Integer> swap : spriteSwaps.entrySet()) {
+            int target = swap.getKey();
+            int source = swap.getValue();
+            if (target >= 0 && target < classCount && source >= 0 && source < classCount) {
+                System.arraycopy(origEntries[source], 0, rom, tableOffset + target * 3, 3);
+            }
+        }
+    }
+
     @Override
     public List<Integer> getDoublesTrainerClasses() {
         int[] doublesClasses = romEntry.arrayEntries.get("DoublesTrainerClasses");

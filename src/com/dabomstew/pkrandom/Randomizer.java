@@ -654,6 +654,11 @@ public class Randomizer {
             }
             CustomEncounterFile.overlayCustomTrainers(customParseResult, currentTrainers, new Random(seed));
             romHandler.setTrainers(currentTrainers, false);
+            // Apply custom class sprites
+            if (customParseResult.customClassSprites != null && !customParseResult.customClassSprites.isEmpty()
+                    && romHandler instanceof Gen2RomHandler) {
+                ((Gen2RomHandler) romHandler).swapTrainerClassSprites(customParseResult.customClassSprites);
+            }
             // Apply custom class names
             if (customParseResult.customClassNames != null && !customParseResult.customClassNames.isEmpty()) {
                 List<String> classNames = romHandler.getTrainerClassNames();
