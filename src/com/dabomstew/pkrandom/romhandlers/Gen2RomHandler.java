@@ -2922,6 +2922,7 @@ public class Gen2RomHandler extends AbstractGBCRomHandler {
     private static final int SCRIPT_WINLOSSTEXT = 0x64;  // winlosstext SeenPtr, BeatenPtr (4 param bytes)
     private static final int SCRIPT_LOADTRAINER = 0x5E;  // loadtrainer CLASS, ID (2 param bytes)
     private static final int SCRIPT_STARTBATTLE = 0x5F;  // startbattle (0 params)
+    private static final int SCRIPT_CALLFAR = 0x24;     // callfar bank, lo, hi (cross-bank call)
 
     /**
      * Reads dialogue text from a text script pointer location.
@@ -3312,9 +3313,67 @@ public class Gen2RomHandler extends AbstractGBCRomHandler {
      */
     private void extractScriptDialogue(int scriptOffset, int bank,
                                         Map<Integer, List<Trainer>> byClass) {
-        int scanLimit = Math.min(scriptOffset + 1500, rom.length - 10);
+        extractScriptDialogueWithContext(scriptOffset, bank, byClass, -1, -1);
+    }
+
+    /**
+     * Core script dialogue extraction. The crossBank/crossWriteTextOff parameters
+     * carry a writetext found in a CALLING bank (before a callfar), so it can be
+     * applied to trainers found in the TARGET bank.
+     */
+    private void extractScriptDialogueWithContext(int scriptOffset, int bank,
+                                        Map<Integer, List<Trainer>> byClass,
+                                        int crossBankWriteTextBank, int crossBankWriteTextOff) {
+        extractScriptDialogueWithContext(scriptOffset, bank, byClass, crossBankWriteTextBank, crossBankWriteTextOff, 0);
+    }
+
+    private void extractScriptDialogueWithContext(int scriptOffset, int bank,
+                                        Map<Integer, List<Trainer>> byClass,
+                                        int crossBankWriteTextBank, int crossBankWriteTextOff,
+                                        int depth) {
+        if (depth > 2) return; // prevent runaway recursion
+        int scanLimit = Math.min(scriptOffset + 2000, rom.length - 10);
+
         for (int i = scriptOffset; i < scanLimit; i++) {
-            if ((rom[i] & 0xFF) != SCRIPT_LOADTRAINER) continue;
+            int cmd = rom[i] & 0xFF;
+
+            // Follow callfar (0x24) commands to target bank
+            if (cmd == SCRIPT_CALLFAR && i + 3 < scanLimit) {
+                int targetBank = rom[i + 1] & 0xFF;
+                int targetAddr = readWord(i + 2);
+                if (targetBank >= 2 && targetBank < rom.length / GBConstants.bankSize
+                        && targetAddr >= GBConstants.bankSize && targetAddr < GBConstants.bankSize * 2) {
+                    int targetOff = calculateOffset(targetBank, targetAddr);
+                    if (targetOff >= 0 && targetOff < rom.length) {
+                        // Search backward from the callfar for the nearest writetext
+                        // in the CURRENT bank — this is the most likely seen text
+                        int nearestWriteOff = -1;
+                        for (int j = i - 1; j >= Math.max(scriptOffset, i - 300); j--) {
+                            int b2 = rom[j] & 0xFF;
+                            if (b2 == 0x90 || b2 == 0x91) break;
+                            if (b2 == SCRIPT_WRITETEXT) {
+                                int ptr = readWord(j + 1);
+                                if (ptr >= GBConstants.bankSize && ptr < GBConstants.bankSize * 2) {
+                                    int off = calculateOffset(bank, ptr);
+                                    if (off >= 0 && off + 1 < rom.length) {
+                                        String candidate = readDialogueText(off);
+                                        if (looksLikeDialogue(candidate)) {
+                                            nearestWriteOff = off;
+                                            break;
+                                        }
+                                    }
+                                }
+                            }
+                        }
+                        int passOff = nearestWriteOff >= 0 ? nearestWriteOff : crossBankWriteTextOff;
+                        try {
+                            extractScriptDialogueWithContext(targetOff, targetBank, byClass, bank, passOff, depth + 1);
+                        } catch (Exception e) {}
+                    }
+                }
+            }
+
+            if (cmd != SCRIPT_LOADTRAINER) continue;
             int trainerClass = rom[i + 1] & 0xFF;
             int trainerNum = rom[i + 2] & 0xFF;
 
@@ -3377,6 +3436,14 @@ public class Gen2RomHandler extends AbstractGBCRomHandler {
                         }
                     }
                 }
+                // Cross-bank fallback: use writetext from calling bank (passed via callfar)
+                if (t.seenText == null && crossBankWriteTextOff >= 0) {
+                    String text = readDialogueText(crossBankWriteTextOff);
+                    if (looksLikeDialogue(text)) {
+                        t.seenText = text;
+                        storeDialogueOffsets(t, crossBankWriteTextOff, true);
+                    }
+                }
 
                 // beatenText from winlosstext first pointer
                 if (t.beatenText == null && winTextPtr >= 0 && winTextPtr != 0) {
@@ -3398,7 +3465,7 @@ public class Gen2RomHandler extends AbstractGBCRomHandler {
                 {
                     int idleOff = -1;
                     int searchOff = scriptOffset;
-                    for (int depth = 0; depth < 4; depth++) {
+                    for (int idleDepth = 0; idleDepth < 4; idleDepth++) {
                         int foundTarget = -1;
                         for (int j = searchOff; j < Math.min(searchOff + 20, scanLimit); j++) {
                             if ((rom[j] & 0xFF) == 0x31 && j + 5 < scanLimit
