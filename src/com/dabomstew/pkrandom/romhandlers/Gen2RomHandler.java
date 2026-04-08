@@ -3060,8 +3060,43 @@ public class Gen2RomHandler extends AbstractGBCRomHandler {
         int smhOffset = calculateOffset(smhBank, smhPointer);
 
         int ehBank = rom[smhOffset + 6] & 0xFF;
+        int scriptsPointer = readWord(smhOffset + 7);
         int ehPointer = readWord(smhOffset + 9);
         int ehOffset = calculateOffset(ehBank, ehPointer);
+
+        // Scan map scripts for trainer battles (rival encounters, etc.)
+        // Crystal format: scene_count, scenes(4 bytes each), callback_count, callbacks(3 bytes each)
+        if (scriptsPointer >= GBConstants.bankSize && scriptsPointer < GBConstants.bankSize * 2) {
+            int scriptsOff = calculateOffset(ehBank, scriptsPointer);
+            try {
+                int sOff = scriptsOff;
+                // Scene scripts: count + (ptr(2) + extra(2)) per scene
+                int sceneCount = rom[sOff++] & 0xFF;
+                if (sceneCount <= 10) {
+                    for (int sc = 0; sc < sceneCount; sc++) {
+                        int scPtr = readWord(sOff);
+                        sOff += 4; // ptr(2) + extra(2)
+                        if (scPtr >= GBConstants.bankSize && scPtr < GBConstants.bankSize * 2) {
+                            int scOff = calculateOffset(ehBank, scPtr);
+                            try { extractScriptDialogue(scOff, ehBank, byClass); } catch (Exception e) {}
+                        }
+                    }
+                    // Callbacks: count + (type(1) + ptr(2)) per callback
+                    int callbackCount = rom[sOff++] & 0xFF;
+                    if (callbackCount <= 5) {
+                        for (int cb = 0; cb < callbackCount; cb++) {
+                            sOff++; // skip callback type
+                            int cbPtr = readWord(sOff);
+                            sOff += 2;
+                            if (cbPtr >= GBConstants.bankSize && cbPtr < GBConstants.bankSize * 2) {
+                                int cbOff = calculateOffset(ehBank, cbPtr);
+                                try { extractScriptDialogue(cbOff, ehBank, byClass); } catch (Exception e) {}
+                            }
+                        }
+                    }
+                }
+            } catch (Exception e) {}
+        }
 
         // skip filler
         ehOffset += 2;
@@ -3180,7 +3215,7 @@ public class Gen2RomHandler extends AbstractGBCRomHandler {
      */
     private void extractScriptDialogue(int scriptOffset, int bank,
                                         Map<Integer, List<Trainer>> byClass) {
-        int scanLimit = Math.min(scriptOffset + 500, rom.length - 10);
+        int scanLimit = Math.min(scriptOffset + 1500, rom.length - 10);
         for (int i = scriptOffset; i < scanLimit; i++) {
             if ((rom[i] & 0xFF) != SCRIPT_LOADTRAINER) continue;
             int trainerClass = rom[i + 1] & 0xFF;
@@ -3194,9 +3229,9 @@ public class Gen2RomHandler extends AbstractGBCRomHandler {
                 if (t.seenText != null && t.beatenText != null) {
                     // seenText/beatenText already populated — skip to idle text only
                 } else {
-                // Search backwards (up to 20 bytes) for winlosstext (0x64)
+                // Search backwards for winlosstext (0x64)
                 int winTextPtr = -1;
-                for (int j = i - 1; j >= Math.max(scriptOffset, i - 20); j--) {
+                for (int j = i - 1; j >= Math.max(0, i - 30); j--) {
                     if ((rom[j] & 0xFF) == SCRIPT_WINLOSSTEXT) {
                         int ptr = readWord(j + 1);
                         if (ptr >= GBConstants.bankSize && ptr < GBConstants.bankSize * 2) {
@@ -3209,10 +3244,10 @@ public class Gen2RomHandler extends AbstractGBCRomHandler {
                     }
                 }
 
-                // Search backwards (up to 30 bytes) for most recent writetext (0x4C)
-                // Validate that the pointer resolves to a location that looks like text
+                // Search backwards (up to 80 bytes) for most recent writetext (0x4C)
+                // Rival cutscenes have writetext up to 68 bytes before loadtrainer
                 int preTextPtr = -1;
-                for (int j = i - 1; j >= Math.max(scriptOffset, i - 30); j--) {
+                for (int j = i - 1; j >= Math.max(0, i - 80); j--) {
                     if ((rom[j] & 0xFF) == SCRIPT_WRITETEXT) {
                         int ptr = readWord(j + 1);
                         if (ptr >= GBConstants.bankSize && ptr < GBConstants.bankSize * 2) {
@@ -3274,7 +3309,8 @@ public class Gen2RomHandler extends AbstractGBCRomHandler {
                         searchOff = foundTarget;
                     }
                     // Read idle text from the deepest target in the chain
-                    if (idleOff >= 0) {
+                    // Only set if not already populated (avoid cross-script false positives)
+                    if (idleOff >= 0 && t.afterText == null) {
                         String idle = readAfterBattleText(idleOff, bank);
                         if (looksLikeDialogue(idle)) {
                             t.afterText = idle;
