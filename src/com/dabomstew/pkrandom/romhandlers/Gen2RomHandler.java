@@ -2598,6 +2598,28 @@ public class Gen2RomHandler extends AbstractGBCRomHandler {
 
     }
 
+    /**
+     * For each map group, compute the correct upper boundary offset.
+     * Groups may not be stored in index order in the ROM bank, so we sort
+     * all offsets and use the next higher offset from ANY group as the boundary.
+     */
+    private int[] computeGroupMaxOffsets(int[] groupOffsets, int mhBank) {
+        int bankEnd = (mhBank + 1) * GBConstants.bankSize;
+        int[] sorted = Arrays.copyOf(groupOffsets, groupOffsets.length);
+        Arrays.sort(sorted);
+        int[] maxOffsets = new int[groupOffsets.length];
+        for (int i = 0; i < groupOffsets.length; i++) {
+            maxOffsets[i] = bankEnd;
+            for (int s : sorted) {
+                if (s > groupOffsets[i]) {
+                    maxOffsets[i] = s;
+                    break;
+                }
+            }
+        }
+        return maxOffsets;
+    }
+
     private void preprocessMaps() {
         itemOffs = new ArrayList<>();
         itemMapNames = new ArrayList<>();
@@ -2613,10 +2635,12 @@ public class Gen2RomHandler extends AbstractGBCRomHandler {
             groupOffsets[i] = calculateOffset(mhBank, readWord(mhOffset + i * 2));
         }
 
+        int[] maxOffsets = computeGroupMaxOffsets(groupOffsets, mhBank);
+
         // Read maps
         for (int mg = 0; mg < mapGroupCount; mg++) {
             int offset = groupOffsets[mg];
-            int maxOffset = (mg == mapGroupCount - 1) ? (mhBank + 1) * GBConstants.bankSize : groupOffsets[mg + 1];
+            int maxOffset = maxOffsets[mg];
             int map = 0;
             int maxMap = (mg == mapGroupCount - 1) ? mapsInLastGroup : Integer.MAX_VALUE;
             while (offset < maxOffset && map < maxMap) {
@@ -2672,7 +2696,6 @@ public class Gen2RomHandler extends AbstractGBCRomHandler {
                 itemMapNames.add(mapNames[mapBank][mapNumber]);
             }
         }
-        // now skip past them
         ehOffset += signpostCount * 5;
 
         // visible objects/people
@@ -2733,9 +2756,11 @@ public class Gen2RomHandler extends AbstractGBCRomHandler {
             groupOffsets[i] = calculateOffset(mhBank, readWord(mhOffset + i * 2));
         }
 
+        int[] maxOffsets = computeGroupMaxOffsets(groupOffsets, mhBank);
+
         for (int mg = 0; mg < mapGroupCount; mg++) {
             int offset = groupOffsets[mg];
-            int maxOffset = (mg == mapGroupCount - 1) ? (mhBank + 1) * GBConstants.bankSize : groupOffsets[mg + 1];
+            int maxOffset = maxOffsets[mg];
             int map = 0;
             int maxMap = (mg == mapGroupCount - 1) ? mapsInLastGroup : Integer.MAX_VALUE;
             while (offset < maxOffset && map < maxMap) {
@@ -2771,11 +2796,33 @@ public class Gen2RomHandler extends AbstractGBCRomHandler {
         int warpCount = rom[ehOffset++] & 0xFF;
         ehOffset += warpCount * 5;
 
-        // skip xy triggers
+        // xy triggers — also scan for trainer battles (cutscene-triggered fights)
         int triggerCount = rom[ehOffset++] & 0xFF;
+        for (int tr = 0; tr < triggerCount; tr++) {
+            int trigOffset = ehOffset + tr * 8;
+            int trigScriptPtr = readWord(trigOffset + 4);
+            if (trigScriptPtr >= GBConstants.bankSize && trigScriptPtr < GBConstants.bankSize * 2) {
+                int trigScriptOff = calculateOffset(ehBank, trigScriptPtr);
+                try {
+                    int scanLimit = Math.min(trigScriptOff + 500, rom.length - 10);
+                    for (int i = trigScriptOff; i < scanLimit; i++) {
+                        if ((rom[i] & 0xFF) != SCRIPT_LOADTRAINER) continue;
+                        int tClass = rom[i + 1] & 0xFF;
+                        int tNum = rom[i + 2] & 0xFF;
+                        List<Trainer> cls = byClass.get(tClass - 1);
+                        if (cls != null && tNum > 0 && tNum <= cls.size()) {
+                            Trainer t = cls.get(tNum - 1);
+                            if (!trainerLocations.containsKey(t.index)) {
+                                trainerLocations.put(t.index, locationName);
+                            }
+                        }
+                    }
+                } catch (Exception e) {}
+            }
+        }
         ehOffset += triggerCount * 8;
 
-        // skip signposts
+        // skip signposts (types 5+ are 7 bytes, others 5 bytes)
         int signpostCount = rom[ehOffset++] & 0xFF;
         ehOffset += signpostCount * 5;
 
@@ -2790,18 +2837,47 @@ public class Gen2RomHandler extends AbstractGBCRomHandler {
             int personType = colorFunction & 0x0F;
             if (personType == 2) {
                 // Trainer: script pointer at bytes 9-10 points to trainer header
-                // Trainer header contains: byte 0 = trainer class (1-based), byte 1 = trainer id (1-based)
                 int scriptPointer = readWord(personOffset + 9);
                 int scriptOffset = calculateOffset(ehBank, scriptPointer);
 
-                int trainerClass = rom[scriptOffset] & 0xFF;
-                int trainerNum = rom[scriptOffset + 1] & 0xFF;
+                // Phone/registered trainers have a 2-byte prefix before the standard header.
+                // Detect by checking if byte 0 exceeds the valid trainer class range.
+                int headerOffset = scriptOffset;
+                int firstByte = rom[headerOffset] & 0xFF;
+                if (firstByte >= romEntry.getValue("TrainerClassAmount")) {
+                    headerOffset += 2; // skip phone trainer prefix
+                }
+                int trainerClass = rom[headerOffset] & 0xFF;
+                int trainerNum = rom[headerOffset + 1] & 0xFF;
 
                 // Look up the trainer by class and within-class number
                 List<Trainer> classTrainers = byClass.get(trainerClass - 1); // class is 1-based in ROM
                 if (classTrainers != null && trainerNum > 0 && trainerNum <= classTrainers.size()) {
                     Trainer t = classTrainers.get(trainerNum - 1); // number is 1-based in ROM
                     trainerLocations.put(t.index, locationName);
+                }
+            } else if (personType == 0) {
+                // PERSONTYPE_SCRIPT: scan for loadtrainer commands (gym leaders, E4, rival, etc.)
+                int scriptPointer = readWord(personOffset + 9);
+                if (scriptPointer >= GBConstants.bankSize && scriptPointer < GBConstants.bankSize * 2) {
+                    int scriptOffset = calculateOffset(ehBank, scriptPointer);
+                    try {
+                        int scanLimit = Math.min(scriptOffset + 500, rom.length - 10);
+                        for (int i = scriptOffset; i < scanLimit; i++) {
+                            if ((rom[i] & 0xFF) != SCRIPT_LOADTRAINER) continue;
+                            int tClass = rom[i + 1] & 0xFF;
+                            int tNum = rom[i + 2] & 0xFF;
+                            List<Trainer> cls = byClass.get(tClass - 1);
+                            if (cls != null && tNum > 0 && tNum <= cls.size()) {
+                                Trainer t = cls.get(tNum - 1);
+                                if (!trainerLocations.containsKey(t.index)) {
+                                    trainerLocations.put(t.index, locationName);
+                                }
+                            }
+                        }
+                    } catch (Exception e) {
+                        // Skip unreadable scripts
+                    }
                 }
             }
         }
@@ -2951,9 +3027,11 @@ public class Gen2RomHandler extends AbstractGBCRomHandler {
             groupOffsets[i] = calculateOffset(mhBank, readWord(mhOffset + i * 2));
         }
 
+        int[] maxOffsets = computeGroupMaxOffsets(groupOffsets, mhBank);
+
         for (int mg = 0; mg < mapGroupCount; mg++) {
             int offset = groupOffsets[mg];
-            int maxOffset = (mg == mapGroupCount - 1) ? (mhBank + 1) * GBConstants.bankSize : groupOffsets[mg + 1];
+            int maxOffset = maxOffsets[mg];
             int map = 0;
             int maxMap = (mg == mapGroupCount - 1) ? mapsInLastGroup : Integer.MAX_VALUE;
             while (offset < maxOffset && map < maxMap) {
@@ -2962,6 +3040,18 @@ public class Gen2RomHandler extends AbstractGBCRomHandler {
                 map++;
             }
         }
+
+        // Dialogue stats
+        int totalSeen = 0, totalBeaten = 0, totalAfter = 0;
+        for (Trainer t : trainers) {
+            if (t.seenText != null) totalSeen++;
+            if (t.beatenText != null) totalBeaten++;
+            if (t.afterText != null) totalAfter++;
+        }
+        System.err.println("[Dialogue] seenText: " + totalSeen
+            + ", beatenText: " + totalBeaten
+            + ", afterText: " + totalAfter
+            + " / " + trainers.size() + " trainers");
     }
 
     private void extractDialogueFromMap(int offset, Map<Integer, List<Trainer>> byClass) {
@@ -2992,7 +3082,7 @@ public class Gen2RomHandler extends AbstractGBCRomHandler {
         }
         ehOffset += triggerCount * 8;
 
-        // skip signposts
+        // skip signposts (types 5+ are 7 bytes, others 5 bytes)
         int signpostCount = rom[ehOffset++] & 0xFF;
         ehOffset += signpostCount * 5;
 
@@ -3007,13 +3097,30 @@ public class Gen2RomHandler extends AbstractGBCRomHandler {
                 int scriptPointer = readWord(personOffset + 9);
                 int scriptOffset = calculateOffset(ehBank, scriptPointer);
 
-                int trainerClass = rom[scriptOffset] & 0xFF;
-                int trainerNum = rom[scriptOffset + 1] & 0xFF;
-                // +2,+3 = event flag (skip)
-                int seenTextPtr = readWord(scriptOffset + 4);
-                int beatenTextPtr = readWord(scriptOffset + 6);
-                // +8 = type byte (skip)
-                int afterScriptPtr = readWord(scriptOffset + 9);
+                // Phone/registered trainers have a 2-byte prefix and different body layout.
+                // Standard: class(1) num(1) flag(2) seen(2) beaten(2) type(1) after(2)
+                // Phone:    prefix(2) class(1) num(1) seen(2) beaten(2) ??(2) ??(1) after(2)
+                int headerOffset = scriptOffset;
+                int firstByte = rom[headerOffset] & 0xFF;
+                boolean isPhoneTrainer = firstByte >= romEntry.getValue("TrainerClassAmount");
+                if (isPhoneTrainer) {
+                    headerOffset += 2;
+                }
+                int trainerClass = rom[headerOffset] & 0xFF;
+                int trainerNum = rom[headerOffset + 1] & 0xFF;
+
+                int seenTextPtr, beatenTextPtr, afterScriptPtr;
+                if (isPhoneTrainer) {
+                    // Phone trainers: no event flag field, text ptrs start at +2
+                    seenTextPtr = readWord(headerOffset + 2);
+                    beatenTextPtr = readWord(headerOffset + 4);
+                    afterScriptPtr = readWord(headerOffset + 9);
+                } else {
+                    // Standard trainers: event flag at +2, text ptrs at +4/+6
+                    seenTextPtr = readWord(headerOffset + 4);
+                    beatenTextPtr = readWord(headerOffset + 6);
+                    afterScriptPtr = readWord(headerOffset + 9);
+                }
 
                 int seenTextOffset = calculateOffset(ehBank, seenTextPtr);
                 int beatenTextOffset = calculateOffset(ehBank, beatenTextPtr);
@@ -3023,14 +3130,21 @@ public class Gen2RomHandler extends AbstractGBCRomHandler {
                 if (classTrainers != null && trainerNum > 0 && trainerNum <= classTrainers.size()) {
                     Trainer t = classTrainers.get(trainerNum - 1);
                     try {
-                        t.seenText = readDialogueText(seenTextOffset);
-                        t.beatenText = readDialogueText(beatenTextOffset);
-                        storeDialogueOffsets(t, seenTextOffset, true);
-                        storeDialogueOffsets(t, beatenTextOffset, false);
-                        String after = readAfterBattleText(afterScriptOffset, ehBank);
-                        if (looksLikeDialogue(after)) {
-                            t.afterText = after;
-                            storeAfterBattleOffsets(t, afterScriptOffset, ehBank);
+                        // Only read text from valid banked pointers (>= 0x4000)
+                        if (seenTextPtr >= GBConstants.bankSize) {
+                            t.seenText = readDialogueText(seenTextOffset);
+                            storeDialogueOffsets(t, seenTextOffset, true);
+                        }
+                        if (beatenTextPtr >= GBConstants.bankSize) {
+                            t.beatenText = readDialogueText(beatenTextOffset);
+                            storeDialogueOffsets(t, beatenTextOffset, false);
+                        }
+                        if (afterScriptPtr >= GBConstants.bankSize) {
+                            String after = readAfterBattleText(afterScriptOffset, ehBank);
+                            if (looksLikeDialogue(after)) {
+                                t.afterText = after;
+                                storeAfterBattleOffsets(t, afterScriptOffset, ehBank);
+                            }
                         }
                     } catch (Exception e) {
                         // Skip trainers with unreadable text
