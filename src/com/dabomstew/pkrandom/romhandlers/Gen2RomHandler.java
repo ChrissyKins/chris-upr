@@ -2960,8 +2960,14 @@ public class Gen2RomHandler extends AbstractGBCRomHandler {
             // 0x50 = bare terminator
             return "";
         } else if (cmd < 0x20) {
-            // Some other text engine command we can't follow statically
-            return null;
+            // Text engine command (e.g. TX_STRINGBUFFER for rival name insertion).
+            // Read inline text from this position — the UPR's string reader will
+            // handle unknown bytes as \xHH escapes, preserving the command inline.
+            String text = readVariableLengthString(textScriptOffset, true);
+            if (text.endsWith("\\e") || text.endsWith("\\r")) {
+                text = text.substring(0, text.length() - 2);
+            }
+            return text;
         } else {
             // Inline text — read in text engine mode (stops at \e or \r)
             String text = readVariableLengthString(textScriptOffset, true);
@@ -3101,19 +3107,25 @@ public class Gen2RomHandler extends AbstractGBCRomHandler {
 
         // Phone rematch variants share the same NPC and dialogue as the base trainer.
         // Copy dialogue from the first trainer in the class that has it.
+        // Use name + tag prefix as the key so different encounters of the same
+        // trainer name (e.g. RIVAL "?" with tags RIVAL1-x, RIVAL2-x) don't mix.
         for (List<Trainer> clsList : byClass.values()) {
-            // Find trainers with the same name — these are rematch variants
-            Map<String, Trainer> bestByName = new LinkedHashMap<>();
+            Map<String, Trainer> bestByKey = new LinkedHashMap<>();
             for (Trainer t : clsList) {
-                String key = t.name;
-                Trainer existing = bestByName.get(key);
+                // Tag prefix groups variants: "RIVAL1-1","RIVAL1-2","RIVAL1-0" → "RIVAL1"
+                String tagGroup = (t.tag != null && t.tag.contains("-"))
+                    ? t.tag.substring(0, t.tag.lastIndexOf('-')) : "";
+                String key = t.name + "|" + tagGroup;
+                Trainer existing = bestByKey.get(key);
                 if (existing == null || (t.seenText != null && existing.seenText == null)) {
-                    bestByName.put(key, t);
+                    bestByKey.put(key, t);
                 }
             }
-            // Copy dialogue from the best to all variants with the same name
             for (Trainer t : clsList) {
-                Trainer best = bestByName.get(t.name);
+                String tagGroup = (t.tag != null && t.tag.contains("-"))
+                    ? t.tag.substring(0, t.tag.lastIndexOf('-')) : "";
+                String key = t.name + "|" + tagGroup;
+                Trainer best = bestByKey.get(key);
                 if (best == null || best == t) continue;
                 if (t.seenText == null && best.seenText != null) t.seenText = best.seenText;
                 if (t.beatenText == null && best.beatenText != null) t.beatenText = best.beatenText;
@@ -3330,18 +3342,27 @@ public class Gen2RomHandler extends AbstractGBCRomHandler {
                 }
 
                 // Search backwards (up to 80 bytes) for most recent writetext (0x4C)
-                // Rival cutscenes have writetext up to 68 bytes before loadtrainer
+                // Skip false positives by validating the text looks like dialogue.
+                // Also reject if there's a script end/return (0x90/0x91) between
+                // the candidate and the loadtrainer (means it's from a different script).
                 int preTextPtr = -1;
                 for (int j = i - 1; j >= Math.max(0, i - 80); j--) {
-                    if ((rom[j] & 0xFF) == SCRIPT_WRITETEXT) {
+                    // Stop if we hit a script terminator — anything before this
+                    // is from a different script section
+                    int b = rom[j] & 0xFF;
+                    if (b == 0x90 || b == 0x91) break; // end / return
+                    if (b == SCRIPT_WRITETEXT) {
                         int ptr = readWord(j + 1);
                         if (ptr >= GBConstants.bankSize && ptr < GBConstants.bankSize * 2) {
                             int off = calculateOffset(bank, ptr);
                             if (off >= 0 && off + 1 < rom.length) {
-                                preTextPtr = ptr;
+                                String candidate = readDialogueText(off);
+                                if (looksLikeDialogue(candidate)) {
+                                    preTextPtr = ptr;
+                                    break;
+                                }
                             }
                         }
-                        break;
                     }
                 }
 
