@@ -2840,20 +2840,27 @@ public class Gen2RomHandler extends AbstractGBCRomHandler {
                 int scriptPointer = readWord(personOffset + 9);
                 int scriptOffset = calculateOffset(ehBank, scriptPointer);
 
-                // Phone/registered trainers have a 2-byte prefix before the standard header.
-                // Detect by checking if byte 0 exceeds the valid trainer class range.
+                // Trainer headers may have a 2-byte prefix:
+                //   Phone trainers: byte 0 >= TrainerClassAmount, byte 1 = 0x03
+                //   Kanto/gym trainers: byte 0 = gym class, byte 1 = 0x04
+                // Try without prefix first, then with prefix if that fails.
                 int headerOffset = scriptOffset;
-                int firstByte = rom[headerOffset] & 0xFF;
-                if (firstByte >= romEntry.getValue("TrainerClassAmount")) {
-                    headerOffset += 2; // skip phone trainer prefix
-                }
                 int trainerClass = rom[headerOffset] & 0xFF;
                 int trainerNum = rom[headerOffset + 1] & 0xFF;
+                boolean hasPrefix = false;
 
-                // Look up the trainer by class and within-class number
-                List<Trainer> classTrainers = byClass.get(trainerClass - 1); // class is 1-based in ROM
+                List<Trainer> classTrainers = byClass.get(trainerClass - 1);
+                if (classTrainers == null || trainerNum <= 0 || trainerNum > classTrainers.size()) {
+                    // Standard match failed — try with 2-byte prefix
+                    headerOffset = scriptOffset + 2;
+                    trainerClass = rom[headerOffset] & 0xFF;
+                    trainerNum = rom[headerOffset + 1] & 0xFF;
+                    classTrainers = byClass.get(trainerClass - 1);
+                    hasPrefix = true;
+                }
+
                 if (classTrainers != null && trainerNum > 0 && trainerNum <= classTrainers.size()) {
-                    Trainer t = classTrainers.get(trainerNum - 1); // number is 1-based in ROM
+                    Trainer t = classTrainers.get(trainerNum - 1);
                     trainerLocations.put(t.index, locationName);
                 }
             } else if (personType == 0) {
@@ -3184,20 +3191,25 @@ public class Gen2RomHandler extends AbstractGBCRomHandler {
                 int scriptPointer = readWord(personOffset + 9);
                 int scriptOffset = calculateOffset(ehBank, scriptPointer);
 
-                // Phone/registered trainers have a 2-byte prefix and different body layout.
-                // Standard: class(1) num(1) flag(2) seen(2) beaten(2) type(1) after(2)
-                // Phone:    prefix(2) class(1) num(1) seen(2) beaten(2) ??(2) ??(1) after(2)
+                // Trainer headers may have a 2-byte prefix (phone/gym trainers).
+                // Try without prefix first, fall back to +2 offset.
+                // Prefixed format: class(1) num(1) seen(2) beaten(2) ??(2) after(2)
+                // Standard format: class(1) num(1) flag(2) seen(2) beaten(2) type(1) after(2)
                 int headerOffset = scriptOffset;
-                int firstByte = rom[headerOffset] & 0xFF;
-                boolean isPhoneTrainer = firstByte >= romEntry.getValue("TrainerClassAmount");
-                if (isPhoneTrainer) {
-                    headerOffset += 2;
-                }
                 int trainerClass = rom[headerOffset] & 0xFF;
                 int trainerNum = rom[headerOffset + 1] & 0xFF;
+                boolean hasPrefix = false;
+
+                List<Trainer> classTrainersCheck = byClass.get(trainerClass - 1);
+                if (classTrainersCheck == null || trainerNum <= 0 || trainerNum > classTrainersCheck.size()) {
+                    headerOffset = scriptOffset + 2;
+                    trainerClass = rom[headerOffset] & 0xFF;
+                    trainerNum = rom[headerOffset + 1] & 0xFF;
+                    hasPrefix = true;
+                }
 
                 int seenTextPtr, beatenTextPtr, afterScriptPtr;
-                if (isPhoneTrainer) {
+                if (hasPrefix) {
                     // Phone trainers: no event flag or type field
                     // Layout: class(1) num(1) seen(2) beaten(2) ??(2) after(2)
                     seenTextPtr = readWord(headerOffset + 2);
