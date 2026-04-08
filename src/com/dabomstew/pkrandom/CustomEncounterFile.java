@@ -49,6 +49,7 @@ public class CustomEncounterFile {
         List<StaticSlotData> customStatics = new ArrayList<>();
         Map<Integer, List<TrainerPokemonData>> parsedTrainers = new LinkedHashMap<>();
         Map<Integer, String[]> parsedTrainerDialogue = new LinkedHashMap<>(); // index -> [seenText, beatenText]
+        Map<Integer, String> parsedTrainerNames = new LinkedHashMap<>(); // index -> new name
 
         // Parse encounters array
         int encIdx = content.indexOf("\"encounters\"");
@@ -147,6 +148,10 @@ public class CustomEncounterFile {
                 for (String trainerObj : trainerObjects) {
                     int index = extractJsonInt(trainerObj, "index", -1);
                     if (index < 0) continue;
+
+                    // Parse trainer name (rename)
+                    String trainerName = extractJsonString(trainerObj, "trainerName");
+                    if (trainerName != null) parsedTrainerNames.put(index, trainerName);
 
                     // Parse dialogue text
                     String seenText = unescapeJsonString(extractJsonString(trainerObj, "seenText"));
@@ -487,8 +492,11 @@ public class CustomEncounterFile {
                 modified.offset = orig.offset;
                 modified.index = orig.index;
                 modified.trainerclass = orig.trainerclass;
-                modified.name = orig.name;
-                modified.fullDisplayName = orig.fullDisplayName;
+                String customName = parsedTrainerNames.get(orig.index);
+                modified.name = (customName != null) ? customName : orig.name;
+                modified.fullDisplayName = (customName != null)
+                    ? orig.fullDisplayName.replace(orig.name, customName)
+                    : orig.fullDisplayName;
                 modified.tag = orig.tag;
                 modified.poketype = orig.poketype;
                 modified.importantTrainer = orig.importantTrainer;
