@@ -3041,6 +3041,36 @@ public class Gen2RomHandler extends AbstractGBCRomHandler {
             }
         }
 
+        // Fallback: scan ROM for loadtrainer commands to catch trainers in
+        // complex cutscene scripts not reached via map callbacks.
+        for (Trainer t : trainers) {
+            if (t.seenText != null) continue; // only look for missing seenText
+            List<Trainer> clsList = byClass.get(t.trainerclass);
+            if (clsList == null) continue;
+            int withinClass = clsList.indexOf(t) + 1;
+            if (withinClass <= 0) continue;
+            int tClass = t.trainerclass + 1; // 1-indexed ROM class
+
+            // Scan ROM for all loadtrainer matches, try each until we get dialogue
+            for (int pos = 0; pos < rom.length - 3; pos++) {
+                if ((rom[pos] & 0xFF) != SCRIPT_LOADTRAINER
+                        || (rom[pos + 1] & 0xFF) != tClass
+                        || (rom[pos + 2] & 0xFF) != withinClass) continue;
+                int bank = pos / GBConstants.bankSize;
+                // Validate: check for winlosstext (0x64) or writetext (0x4C) nearby
+                boolean hasScriptContext = false;
+                for (int j = Math.max(0, pos - 80); j < Math.min(rom.length, pos + 10); j++) {
+                    int c = rom[j] & 0xFF;
+                    if (c == SCRIPT_WINLOSSTEXT || c == SCRIPT_WRITETEXT) { hasScriptContext = true; break; }
+                }
+                if (!hasScriptContext) continue;
+                try {
+                    extractScriptDialogue(Math.max(bank * GBConstants.bankSize, pos - 200), bank, byClass);
+                } catch (Exception e) {}
+                if (t.seenText != null) break;
+            }
+        }
+
         // Dialogue stats
         int totalSeen = 0, totalBeaten = 0, totalAfter = 0;
         for (Trainer t : trainers) {
