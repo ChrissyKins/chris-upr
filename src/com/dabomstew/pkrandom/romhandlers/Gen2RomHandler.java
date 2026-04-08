@@ -3111,10 +3111,11 @@ public class Gen2RomHandler extends AbstractGBCRomHandler {
 
                 int seenTextPtr, beatenTextPtr, afterScriptPtr;
                 if (isPhoneTrainer) {
-                    // Phone trainers: no event flag field, text ptrs start at +2
+                    // Phone trainers: no event flag or type field
+                    // Layout: class(1) num(1) seen(2) beaten(2) ??(2) after(2)
                     seenTextPtr = readWord(headerOffset + 2);
                     beatenTextPtr = readWord(headerOffset + 4);
-                    afterScriptPtr = readWord(headerOffset + 9);
+                    afterScriptPtr = readWord(headerOffset + 8);
                 } else {
                     // Standard trainers: event flag at +2, text ptrs at +4/+6
                     seenTextPtr = readWord(headerOffset + 4);
@@ -3249,26 +3250,35 @@ public class Gen2RomHandler extends AbstractGBCRomHandler {
                 }
                 } // end else (seenText/beatenText)
 
-                // Idle text: look for "already beaten" branch at script start.
-                // Pattern: checkflag (0x31) [2b] iftrue (0x09) [target_lo] [target_hi]
-                // The jump target contains the idle text via writetext/jumptext.
-                // Idle text: overwrite any badge-giving text with real idle dialogue
+                // Idle text: follow the checkflag+iftrue chain at the script start.
+                // Gym leaders have: checkflag BADGE → .HasBadge → checkflag → .Idle
+                // Follow ALL checkflag+iftrue links first (to reach the deepest/final
+                // idle branch), then read text from that final target.
                 {
-                    for (int j = scriptOffset; j < Math.min(scriptOffset + 20, scanLimit); j++) {
-                        if ((rom[j] & 0xFF) == 0x31 && j + 5 < scanLimit
-                                && (rom[j + 3] & 0xFF) == 0x09) {
-                            int jumpTarget = readWord(j + 4);
-                            if (jumpTarget >= GBConstants.bankSize && jumpTarget < GBConstants.bankSize * 2) {
-                                int idleOff = calculateOffset(bank, jumpTarget);
-                                if (idleOff >= 0 && idleOff < rom.length) {
-                                    String idle = readAfterBattleText(idleOff, bank);
-                                    if (looksLikeDialogue(idle)) {
-                                        t.afterText = idle;
-                                        storeAfterBattleOffsets(t, idleOff, bank);
-                                    }
+                    int idleOff = -1;
+                    int searchOff = scriptOffset;
+                    for (int depth = 0; depth < 4; depth++) {
+                        int foundTarget = -1;
+                        for (int j = searchOff; j < Math.min(searchOff + 20, scanLimit); j++) {
+                            if ((rom[j] & 0xFF) == 0x31 && j + 5 < scanLimit
+                                    && (rom[j + 3] & 0xFF) == 0x09) {
+                                int jumpTarget = readWord(j + 4);
+                                if (jumpTarget >= GBConstants.bankSize && jumpTarget < GBConstants.bankSize * 2) {
+                                    foundTarget = calculateOffset(bank, jumpTarget);
                                 }
+                                break;
                             }
-                            break;
+                        }
+                        if (foundTarget < 0 || foundTarget >= rom.length) break;
+                        idleOff = foundTarget;
+                        searchOff = foundTarget;
+                    }
+                    // Read idle text from the deepest target in the chain
+                    if (idleOff >= 0) {
+                        String idle = readAfterBattleText(idleOff, bank);
+                        if (looksLikeDialogue(idle)) {
+                            t.afterText = idle;
+                            storeAfterBattleOffsets(t, idleOff, bank);
                         }
                     }
                 }
