@@ -3071,6 +3071,28 @@ public class Gen2RomHandler extends AbstractGBCRomHandler {
             }
         }
 
+        // Phone rematch variants share the same NPC and dialogue as the base trainer.
+        // Copy dialogue from the first trainer in the class that has it.
+        for (List<Trainer> clsList : byClass.values()) {
+            // Find trainers with the same name — these are rematch variants
+            Map<String, Trainer> bestByName = new LinkedHashMap<>();
+            for (Trainer t : clsList) {
+                String key = t.name;
+                Trainer existing = bestByName.get(key);
+                if (existing == null || (t.seenText != null && existing.seenText == null)) {
+                    bestByName.put(key, t);
+                }
+            }
+            // Copy dialogue from the best to all variants with the same name
+            for (Trainer t : clsList) {
+                Trainer best = bestByName.get(t.name);
+                if (best == null || best == t) continue;
+                if (t.seenText == null && best.seenText != null) t.seenText = best.seenText;
+                if (t.beatenText == null && best.beatenText != null) t.beatenText = best.beatenText;
+                if (t.afterText == null && best.afterText != null) t.afterText = best.afterText;
+            }
+        }
+
         // Dialogue stats
         int totalSeen = 0, totalBeaten = 0, totalAfter = 0;
         for (Trainer t : trainers) {
