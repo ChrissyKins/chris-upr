@@ -2302,12 +2302,109 @@ public class Gen2RomHandler extends AbstractGBCRomHandler {
             System.arraycopy(rom, tableOffset + i * 3, origEntries[i], 0, 3);
         }
 
-        // Apply swaps
+        // Apply battle sprite swaps
         for (Map.Entry<Integer, Integer> swap : spriteSwaps.entrySet()) {
             int target = swap.getKey();
             int source = swap.getValue();
             if (target >= 0 && target < classCount && source >= 0 && source < classCount) {
                 System.arraycopy(origEntries[source], 0, rom, tableOffset + target * 3, 3);
+            }
+        }
+
+        // Also swap overworld sprites by scanning all map person events.
+        // First pass: record the default overworld sprite for each trainer class.
+        Map<Integer, Integer> classOverworldSprites = new LinkedHashMap<>();
+        iterateMapPersonEvents((personOffset, ehBank, trainerClass) -> {
+            if (!classOverworldSprites.containsKey(trainerClass)) {
+                classOverworldSprites.put(trainerClass, rom[personOffset] & 0xFF);
+            }
+        });
+
+        // Second pass: for each swap, change byte 0 to the source class's overworld sprite.
+        Map<Integer, Integer> overworldSwaps = new LinkedHashMap<>();
+        for (Map.Entry<Integer, Integer> swap : spriteSwaps.entrySet()) {
+            int target = swap.getKey();
+            int source = swap.getValue();
+            Integer sourceSprite = classOverworldSprites.get(source);
+            if (sourceSprite != null) {
+                overworldSwaps.put(target, sourceSprite);
+            }
+        }
+        if (!overworldSwaps.isEmpty()) {
+            iterateMapPersonEvents((personOffset, ehBank, trainerClass) -> {
+                Integer newSprite = overworldSwaps.get(trainerClass);
+                if (newSprite != null) {
+                    rom[personOffset] = (byte) (int) newSprite;
+                }
+            });
+        }
+    }
+
+    @FunctionalInterface
+    private interface PersonEventVisitor {
+        void visit(int personOffset, int ehBank, int trainerClass);
+    }
+
+    /** Iterates all personType 2 person events on all maps, calling visitor with
+     *  the person event offset, event bank, and trainer class (0-indexed). */
+    private void iterateMapPersonEvents(PersonEventVisitor visitor) {
+        int mhOffset = romEntry.getValue("MapHeaders");
+        int mapGroupCount = Gen2Constants.mapGroupCount;
+        int mapsInLastGroup = Gen2Constants.mapsInLastGroup;
+        int mhBank = bankOf(mhOffset);
+        int trainerClassAmount = romEntry.getValue("TrainerClassAmount");
+
+        int[] groupOffsets = new int[mapGroupCount];
+        for (int i = 0; i < mapGroupCount; i++) {
+            groupOffsets[i] = calculateOffset(mhBank, readWord(mhOffset + i * 2));
+        }
+        int[] maxOffsets = computeGroupMaxOffsets(groupOffsets, mhBank);
+
+        for (int mg = 0; mg < mapGroupCount; mg++) {
+            int offset = groupOffsets[mg];
+            int maxOffset = maxOffsets[mg];
+            int map = 0;
+            int maxMap = (mg == mapGroupCount - 1) ? mapsInLastGroup : Integer.MAX_VALUE;
+            while (offset < maxOffset && map < maxMap) {
+                try {
+                    int smhBank = rom[offset] & 0xFF;
+                    int smhPointer = readWord(offset + 3);
+                    int smhOffset = calculateOffset(smhBank, smhPointer);
+                    int ehBank = rom[smhOffset + 6] & 0xFF;
+                    int ehPointer = readWord(smhOffset + 9);
+                    int ehOffset = calculateOffset(ehBank, ehPointer);
+                    ehOffset += 2;
+                    int warpCount = rom[ehOffset++] & 0xFF; ehOffset += warpCount * 5;
+                    int triggerCount = rom[ehOffset++] & 0xFF; ehOffset += triggerCount * 8;
+                    int signpostCount = rom[ehOffset++] & 0xFF; ehOffset += signpostCount * 5;
+                    int peopleCount = rom[ehOffset++] & 0xFF;
+
+                    for (int p = 0; p < peopleCount; p++) {
+                        int personOffset = ehOffset + p * 13;
+                        int personType = rom[personOffset + 7] & 0x0F;
+                        if (personType == 2) {
+                            int scriptPointer = readWord(personOffset + 9);
+                            int scriptOffset = calculateOffset(ehBank, scriptPointer);
+                            // Detect prefix (phone/kanto trainers)
+                            int headerOffset = scriptOffset;
+                            int trainerClass = rom[headerOffset] & 0xFF;
+                            int trainerNum = rom[headerOffset + 1] & 0xFF;
+                            List<Trainer> clsList = null; // just check validity
+                            if (trainerClass > 0 && trainerClass <= trainerClassAmount) {
+                                // Standard format — class is valid
+                            } else {
+                                // Try with 2-byte prefix
+                                headerOffset = scriptOffset + 2;
+                                trainerClass = rom[headerOffset] & 0xFF;
+                            }
+                            if (trainerClass > 0 && trainerClass <= trainerClassAmount) {
+                                visitor.visit(personOffset, ehBank, trainerClass - 1); // 0-indexed
+                            }
+                        }
+                    }
+                } catch (Exception e) {}
+                offset += 9;
+                map++;
             }
         }
     }
