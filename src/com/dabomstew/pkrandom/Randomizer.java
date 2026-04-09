@@ -522,6 +522,7 @@ public class Randomizer {
                     log.println("Warning: Unknown Pokemon ID " + ped.id + " in pokemonEdits, skipping.");
                     continue;
                 }
+                if (ped.name != null) pk.name = ped.name;
                 if (ped.type1 != null) {
                     try { pk.primaryType = Type.valueOf(ped.type1); }
                     catch (IllegalArgumentException e) { log.println("Warning: Unknown type '" + ped.type1 + "' for Pokemon " + pk.name); }

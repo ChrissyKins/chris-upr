@@ -427,6 +427,7 @@ public class CustomEncounterFile {
                     PokemonEditData ped = new PokemonEditData();
                     ped.id = extractJsonInt(peObj, "id", -1);
                     if (ped.id < 0) continue;
+                    ped.name = extractJsonString(peObj, "name");
                     ped.type1 = extractJsonString(peObj, "type1");
                     ped.type2 = extractJsonString(peObj, "type2");
                     ped.hp = extractJsonInt(peObj, "hp", -1);
@@ -969,6 +970,7 @@ public class CustomEncounterFile {
 
     public static class PokemonEditData {
         public int id;
+        public String name;
         public String type1;
         public String type2;
         public int hp = -1;
