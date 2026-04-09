@@ -111,6 +111,7 @@ public class Randomizer {
         // Parse custom file early so all sections can use it
         String customEncounterPath = settings.getCustomEncounterFilePath();
         CustomEncounterFile.ParseResult customParseResult = null;
+        log.println("Custom encounter file path: " + (customEncounterPath != null ? customEncounterPath : "(none)"));
         if (customEncounterPath != null && !customEncounterPath.isEmpty()) {
             try {
                 boolean useTimeOfDay = settings.isUseTimeBasedEncounters();
