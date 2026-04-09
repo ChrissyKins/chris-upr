@@ -667,11 +667,8 @@ public class Randomizer {
         // Apply custom class sprites (independent of trainer changes)
         if (customParseResult != null && customParseResult.customClassSprites != null
                 && !customParseResult.customClassSprites.isEmpty() && romHandler instanceof Gen2RomHandler) {
-            System.err.println("[Randomizer] Applying " + customParseResult.customClassSprites.size() + " sprite swaps");
             ((Gen2RomHandler) romHandler).swapTrainerClassSprites(customParseResult.customClassSprites);
-            log.println("Custom class sprites applied.");
-        } else if (customParseResult != null) {
-            System.err.println("[Randomizer] No sprite swaps to apply. customClassSprites=" + customParseResult.customClassSprites);
+            log.println("Custom class sprites applied (" + customParseResult.customClassSprites.size() + " swaps).");
         }
         // Apply custom class names (independent of trainer changes)
         if (customParseResult != null && customParseResult.customClassNames != null

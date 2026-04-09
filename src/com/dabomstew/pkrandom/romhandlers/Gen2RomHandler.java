@@ -2292,11 +2292,7 @@ public class Gen2RomHandler extends AbstractGBCRomHandler {
      * classId -> spriteSourceClassId (copy sprite pointer from source to target).
      */
     public void swapTrainerClassSprites(Map<Integer, Integer> spriteSwaps) {
-        System.err.println("[SpriteSwap] Called with " + spriteSwaps.size() + " swaps: " + spriteSwaps);
-        if (!romEntry.entries.containsKey("TrainerPicPointers")) {
-            System.err.println("[SpriteSwap] No TrainerPicPointers in ROM config!");
-            return;
-        }
+        if (!romEntry.entries.containsKey("TrainerPicPointers")) return;
         int tableOffset = romEntry.getValue("TrainerPicPointers");
         int classCount = romEntry.getValue("TrainerClassAmount");
 
