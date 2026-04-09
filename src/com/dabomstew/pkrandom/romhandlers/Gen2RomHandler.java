@@ -2385,20 +2385,31 @@ public class Gen2RomHandler extends AbstractGBCRomHandler {
                         if (personType == 2) {
                             int scriptPointer = readWord(personOffset + 9);
                             int scriptOffset = calculateOffset(ehBank, scriptPointer);
-                            // Detect prefix (phone/kanto trainers)
                             int headerOffset = scriptOffset;
                             int trainerClass = rom[headerOffset] & 0xFF;
-                            int trainerNum = rom[headerOffset + 1] & 0xFF;
-                            List<Trainer> clsList = null; // just check validity
-                            if (trainerClass > 0 && trainerClass <= trainerClassAmount) {
-                                // Standard format — class is valid
-                            } else {
-                                // Try with 2-byte prefix
+                            if (trainerClass <= 0 || trainerClass > trainerClassAmount) {
                                 headerOffset = scriptOffset + 2;
                                 trainerClass = rom[headerOffset] & 0xFF;
                             }
                             if (trainerClass > 0 && trainerClass <= trainerClassAmount) {
-                                visitor.visit(personOffset, ehBank, trainerClass - 1); // 0-indexed
+                                visitor.visit(personOffset, ehBank, trainerClass - 1);
+                            }
+                        } else if (personType == 0) {
+                            // Script-triggered trainers (gym leaders, rivals):
+                            // scan script for loadtrainer to identify class
+                            int scriptPointer = readWord(personOffset + 9);
+                            if (scriptPointer >= GBConstants.bankSize && scriptPointer < GBConstants.bankSize * 2) {
+                                int scriptOffset = calculateOffset(ehBank, scriptPointer);
+                                int scanEnd = Math.min(scriptOffset + 500, rom.length - 3);
+                                for (int si = scriptOffset; si < scanEnd; si++) {
+                                    if ((rom[si] & 0xFF) == SCRIPT_LOADTRAINER) {
+                                        int tc = rom[si + 1] & 0xFF;
+                                        if (tc > 0 && tc <= trainerClassAmount) {
+                                            visitor.visit(personOffset, ehBank, tc - 1);
+                                            break;
+                                        }
+                                    }
+                                }
                             }
                         }
                     }
@@ -3529,7 +3540,9 @@ public class Gen2RomHandler extends AbstractGBCRomHandler {
                         String text = readDialogueText(seenOff);
                         if (looksLikeDialogue(text)) {
                             t.seenText = text;
-                            storeDialogueOffsets(t, seenOff, true);
+                            // Don't store write offsets for script-extracted text —
+                            // the writetext pointer may be from a different script
+                            // context and writing there could corrupt the ROM.
                         }
                     }
                 }
@@ -3538,7 +3551,6 @@ public class Gen2RomHandler extends AbstractGBCRomHandler {
                     String text = readDialogueText(crossBankWriteTextOff);
                     if (looksLikeDialogue(text)) {
                         t.seenText = text;
-                        storeDialogueOffsets(t, crossBankWriteTextOff, true);
                     }
                 }
 
@@ -3549,7 +3561,6 @@ public class Gen2RomHandler extends AbstractGBCRomHandler {
                         String text = readDialogueText(beatenOff);
                         if (looksLikeDialogue(text)) {
                             t.beatenText = text;
-                            storeDialogueOffsets(t, beatenOff, false);
                         }
                     }
                 }
@@ -3658,7 +3669,12 @@ public class Gen2RomHandler extends AbstractGBCRomHandler {
     }
 
     private void writeOneDialogue(Trainer t, String text, int farOffset, int farLength, String which) {
-        if (text == null || farOffset < 0 || farLength < 0) return;
+        if (text == null || farOffset < 0 || farLength <= 0) return;
+        if (farOffset + farLength > rom.length) return;
+        // Verify the offset still looks like text data (not code/headers)
+        // The original text should start with a printable character or text command
+        int firstByte = rom[farOffset] & 0xFF;
+        if (firstByte < 0x20 && firstByte != 0x15 && firstByte != 0x01) return;
 
         byte[] translated = translateString(text);
         if (translated.length <= farLength) {
