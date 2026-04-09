@@ -2311,7 +2311,7 @@ public class Gen2RomHandler extends AbstractGBCRomHandler {
             }
         }
 
-        // Also swap overworld sprites by scanning all map person events.
+        // Also swap overworld sprites on ALL maps.
         // First pass: record the default overworld sprite for each trainer class.
         Map<Integer, Integer> classOverworldSprites = new LinkedHashMap<>();
         iterateMapPersonEvents((personOffset, ehBank, trainerClass) -> {
@@ -2320,19 +2320,25 @@ public class Gen2RomHandler extends AbstractGBCRomHandler {
             }
         });
 
-        // Second pass: for each swap, change byte 0 to the source class's overworld sprite.
-        Map<Integer, Integer> overworldSwaps = new LinkedHashMap<>();
+        // Build sprite ID → new sprite ID mapping.
+        // This catches ALL person events using that sprite (including non-battle NPCs
+        // like the rival looking at the lab in New Bark Town).
+        Map<Integer, Integer> spriteIdSwaps = new LinkedHashMap<>();
         for (Map.Entry<Integer, Integer> swap : spriteSwaps.entrySet()) {
-            int target = swap.getKey();
-            int source = swap.getValue();
-            Integer sourceSprite = classOverworldSprites.get(source);
-            if (sourceSprite != null) {
-                overworldSwaps.put(target, sourceSprite);
+            int targetClass = swap.getKey();
+            int sourceClass = swap.getValue();
+            Integer targetSprite = classOverworldSprites.get(targetClass);
+            Integer sourceSprite = classOverworldSprites.get(sourceClass);
+            if (targetSprite != null && sourceSprite != null && !targetSprite.equals(sourceSprite)) {
+                spriteIdSwaps.put(targetSprite, sourceSprite);
             }
         }
-        if (!overworldSwaps.isEmpty()) {
-            iterateMapPersonEvents((personOffset, ehBank, trainerClass) -> {
-                Integer newSprite = overworldSwaps.get(trainerClass);
+
+        // Second pass: change ALL person events using swapped sprite IDs on all maps.
+        if (!spriteIdSwaps.isEmpty()) {
+            iterateAllPersonEvents((personOffset) -> {
+                int currentSprite = rom[personOffset] & 0xFF;
+                Integer newSprite = spriteIdSwaps.get(currentSprite);
                 if (newSprite != null) {
                     rom[personOffset] = (byte) (int) newSprite;
                 }
@@ -2343,6 +2349,52 @@ public class Gen2RomHandler extends AbstractGBCRomHandler {
     @FunctionalInterface
     private interface PersonEventVisitor {
         void visit(int personOffset, int ehBank, int trainerClass);
+    }
+
+    @FunctionalInterface
+    private interface AllPersonEventVisitor {
+        void visit(int personOffset);
+    }
+
+    /** Iterates ALL person events on all maps (any type), calling visitor with the offset. */
+    private void iterateAllPersonEvents(AllPersonEventVisitor visitor) {
+        int mhOffset = romEntry.getValue("MapHeaders");
+        int mapGroupCount = Gen2Constants.mapGroupCount;
+        int mapsInLastGroup = Gen2Constants.mapsInLastGroup;
+        int mhBank = bankOf(mhOffset);
+
+        int[] groupOffsets = new int[mapGroupCount];
+        for (int i = 0; i < mapGroupCount; i++) {
+            groupOffsets[i] = calculateOffset(mhBank, readWord(mhOffset + i * 2));
+        }
+        int[] maxOffsets = computeGroupMaxOffsets(groupOffsets, mhBank);
+
+        for (int mg = 0; mg < mapGroupCount; mg++) {
+            int offset = groupOffsets[mg];
+            int maxOffset = maxOffsets[mg];
+            int map = 0;
+            int maxMap = (mg == mapGroupCount - 1) ? mapsInLastGroup : Integer.MAX_VALUE;
+            while (offset < maxOffset && map < maxMap) {
+                try {
+                    int smhBank = rom[offset] & 0xFF;
+                    int smhPointer = readWord(offset + 3);
+                    int smhOffset = calculateOffset(smhBank, smhPointer);
+                    int ehBank = rom[smhOffset + 6] & 0xFF;
+                    int ehPointer = readWord(smhOffset + 9);
+                    int ehOffset = calculateOffset(ehBank, ehPointer);
+                    ehOffset += 2;
+                    int warpCount = rom[ehOffset++] & 0xFF; ehOffset += warpCount * 5;
+                    int triggerCount = rom[ehOffset++] & 0xFF; ehOffset += triggerCount * 8;
+                    int signpostCount = rom[ehOffset++] & 0xFF; ehOffset += signpostCount * 5;
+                    int peopleCount = rom[ehOffset++] & 0xFF;
+                    for (int p = 0; p < peopleCount; p++) {
+                        visitor.visit(ehOffset + p * 13);
+                    }
+                } catch (Exception e) {}
+                offset += 9;
+                map++;
+            }
+        }
     }
 
     /** Iterates all personType 2 person events on all maps, calling visitor with
